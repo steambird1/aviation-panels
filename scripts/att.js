@@ -8,6 +8,7 @@ export class AttitudeIndication {
    * @param {number} [options.flightDirectorRollScale] - 横滚偏差每度对应像素
    * @param {number} [options.flightDirectorBarLength] - 指引杆长度（像素）
    * @param {number} [options.flightDirectorBarThickness] - 指引杆粗细（像素）
+   * @param {number} [options.horizonMargin] - 大俯仰时仍保留的天空/地面边带高度（像素）
    */
   constructor(canvas, options = {}) {
     this.canvas = canvas;
@@ -26,6 +27,10 @@ export class AttitudeIndication {
     this.flightDirectorRollScale = options.flightDirectorRollScale ?? 1.5;
     this.flightDirectorBarLength = options.flightDirectorBarLength ?? 36;
     this.flightDirectorBarThickness = options.flightDirectorBarThickness ?? 4;
+    this.horizonMargin = Math.min(
+      Math.max(Number(options.horizonMargin ?? 10), 2),
+      this.radius * 0.45
+    );
   }
 
   /**
@@ -64,13 +69,16 @@ export class AttitudeIndication {
     ctx.rotate(-rollRad); // 右滚时地平线逆时针倾斜
 
     const offsetY = pitch * scale; // 抬头时地平线下移
+    // 大俯仰时也至少保留一条天空/地面边带，避免整个仪表只剩单一颜色
+    const maxHorizonOffset = Math.max(0, r - this.horizonMargin);
+    const horizonOffsetY = this._clamp(offsetY, -maxHorizonOffset, maxHorizonOffset);
 
     // 天空（蓝色）与地面（棕色）
     const LARGE = 200;
     ctx.fillStyle = '#1E90FF';
-    ctx.fillRect(-LARGE, -LARGE, LARGE * 2, LARGE + offsetY);
+    ctx.fillRect(-LARGE, -LARGE, LARGE * 2, LARGE + horizonOffsetY);
     ctx.fillStyle = '#8B4513';
-    ctx.fillRect(-LARGE, offsetY, LARGE * 2, LARGE - offsetY);
+    ctx.fillRect(-LARGE, horizonOffsetY, LARGE * 2, LARGE - horizonOffsetY);
 
     // ---- 俯仰刻度线（随背景一起旋转平移） ----
     ctx.strokeStyle = '#FFFFFF';
@@ -87,11 +95,20 @@ export class AttitudeIndication {
       const lineWidth = isMajor ? 30 : 15;
       const lineThickness = isMajor ? 2 : 1;
       const tickHeight = isMajor ? 4 : 2;
+      // 主刻度中间为数字留出空隙，避免横线穿过数字
+      const labelGap = isMajor ? 8 : 0;
 
       ctx.beginPath();
       ctx.lineWidth = lineThickness;
-      ctx.moveTo(-lineWidth, y);
-      ctx.lineTo(lineWidth, y);
+      if (labelGap > 0) {
+        ctx.moveTo(-lineWidth, y);
+        ctx.lineTo(-labelGap, y);
+        ctx.moveTo(labelGap, y);
+        ctx.lineTo(lineWidth, y);
+      } else {
+        ctx.moveTo(-lineWidth, y);
+        ctx.lineTo(lineWidth, y);
+      }
       ctx.stroke();
 
       ctx.beginPath();
@@ -115,11 +132,6 @@ export class AttitudeIndication {
 
     ctx.restore(); // 恢复至未旋转状态
 
-    // ---- 飞行指引十字杆（固定于仪表坐标，不随横滚旋转） ----
-    if (fd) {
-      this._drawFlightDirector(fd);
-    }
-
     // ---- 中心固定飞机符号（不旋转） ----
     ctx.save();
     ctx.translate(cx, cy);
@@ -142,6 +154,11 @@ export class AttitudeIndication {
     ctx.arc(0, 0, 3, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+
+    // ---- 飞行指引十字杆（固定于仪表坐标，不随横滚旋转；绘制在飞机符号之上） ----
+    if (fd) {
+      this._drawFlightDirector(fd);
+    }
 
     // ---- 顶部横滚指示器（固定弧线 + 可移动三角） ----
     ctx.save();
