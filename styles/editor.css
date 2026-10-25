@@ -202,6 +202,64 @@ body.is-editing-drag {
     margin: 0 4px;
 }
 
+.toolbar-dropdown {
+    position: relative;
+}
+
+.toolbar-dropdown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.dropdown-caret {
+    font-size: 9px;
+    color: var(--editor-text-dim);
+}
+
+.toolbar-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 230px;
+    padding: 5px;
+    border: 1px solid #3b4656;
+    border-radius: 6px;
+    background: #1a2029;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.48);
+    z-index: 100;
+}
+
+.toolbar-menu[hidden] {
+    display: none;
+}
+
+.toolbar-menu-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 9px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--editor-text);
+    text-align: left;
+    cursor: pointer;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+}
+
+.toolbar-menu-item:hover {
+    background: #27313d;
+}
+
+.toolbar-menu-item small {
+    color: var(--editor-text-dim);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+}
+
 /* ==================== 主区域 ==================== */
 
 .editor-main {
@@ -968,7 +1026,8 @@ body.preview-mode [data-action="new"],
 body.preview-mode [data-action="open"],
 body.preview-mode [data-action="add-panel"],
 body.preview-mode [data-action="undo"],
-body.preview-mode [data-action="redo"] {
+body.preview-mode [data-action="redo"],
+body.preview-mode .toolbar-dropdown {
     display: none;
 }
 

@@ -2116,4 +2116,73 @@ export function getComponentTypes() {
     return Object.keys(COMPONENT_CLASS_MAP);
 }
 
+// ==================== 项目挂载 ====================
+let mountProjectSequence = 0;
+
+/**
+ * 根据项目 JSON 创建所有面板与组件。
+ *
+ * @param {HTMLElement|string} container 挂载容器（元素或元素 id）
+ * @param {object} project 项目 JSON
+ * @param {{displayRenderers?: Record<string, Function>}} options 显示屏绘制回调
+ * @returns {{root: HTMLElement, panels: Map, components: Map}}
+ */
+export function mountProject(container, project = {}, options = {}) {
+    const target = typeof container === 'string'
+        ? document.getElementById(container)
+        : container;
+    if (!target) {
+        throw new Error('mountProject: 找不到挂载容器');
+    }
+
+    const sequence = ++mountProjectSequence;
+    const root = document.createElement('div');
+    root.className = 'main-panel-div';
+    root.style.display = 'flex';
+    root.style.flexWrap = 'wrap';
+    root.style.gap = '30px';
+    root.style.alignItems = 'flex-start';
+    target.appendChild(root);
+
+    const panels = new Map();
+    const components = new Map();
+    const displayRenderers = options.displayRenderers || {};
+
+    (project.panels || []).forEach((panelData, panelIndex) => {
+        const host = document.createElement('div');
+        host.id = `cockpit-panel-host-${sequence}-${panelIndex}`;
+        root.appendChild(host);
+
+        const panel = new Panel(host.id, {
+            columns: panelData.columns,
+            rows: panelData.rows,
+            cellSize: panelData.cellSize,
+            gap: panelData.gap,
+            panelId: panelData.id,
+        });
+        panels.set(panelData.id, panel);
+
+        (panelData.components || []).forEach((componentData) => {
+            const component = createComponentInstance(
+                componentData.type,
+                componentData.id,
+                componentData.props || {}
+            );
+            panel.addComponent(component, componentData.grid || {});
+            components.set(componentData.id, component);
+
+            if (componentData.type === 'Display' &&
+                typeof displayRenderers[componentData.id] === 'function') {
+                try {
+                    displayRenderers[componentData.id](component);
+                } catch (error) {
+                    console.error(`显示屏 ${componentData.id} 绘制失败:`, error);
+                }
+            }
+        });
+    });
+
+    return { root, panels, components };
+}
+
 // ==================== 导出 ====================

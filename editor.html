@@ -27,6 +27,21 @@
                 <button type="button" class="toolbar-btn" data-action="new" title="新建项目">新建</button>
                 <button type="button" class="toolbar-btn" data-action="open" title="打开 JSON 项目">打开</button>
                 <button type="button" class="toolbar-btn" data-action="save" title="保存为 JSON 文件 (Ctrl+S)">保存 JSON</button>
+                <div class="toolbar-dropdown">
+                    <button type="button" class="toolbar-btn toolbar-dropdown-toggle" data-action="export-js" aria-haspopup="menu" aria-expanded="false" title="导出 JavaScript 代码">
+                        导出 JS <span class="dropdown-caret">▾</span>
+                    </button>
+                    <div class="toolbar-menu" data-menu="export-js" role="menu" hidden>
+                        <button type="button" class="toolbar-menu-item" data-export-js="module" role="menuitem">
+                            <span>JavaScript 模块</span>
+                            <small>内嵌项目数据，通用挂载</small>
+                        </button>
+                        <button type="button" class="toolbar-menu-item" data-export-js="readable" role="menuitem">
+                            <span>可读组件代码</span>
+                            <small>逐组件创建，便于手工修改</small>
+                        </button>
+                    </div>
+                </div>
                 <span class="toolbar-divider"></span>
                 <button type="button" class="toolbar-btn icon-btn" data-action="undo" title="撤销 (Ctrl+Z)" aria-label="撤销">↶</button>
                 <button type="button" class="toolbar-btn icon-btn" data-action="redo" title="重做 (Ctrl+Shift+Z)" aria-label="重做">↷</button>

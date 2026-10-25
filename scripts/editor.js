@@ -14,6 +14,10 @@ import {
     cloneProps,
     clampInt,
 } from './editor-schema.js';
+import {
+    generateJavaScriptModule,
+    generateReadableJavaScript,
+} from './project-codegen.js';
 
 const HISTORY_LIMIT = 60;
 const AUTOSAVE_DELAY = 300;
@@ -1756,21 +1760,47 @@ function createNewProject() {
     setMessage('已新建项目');
 }
 
-function exportProject() {
-    window.clearTimeout(state.historyTimer);
-    pushHistory();
-    const content = JSON.stringify(state.project, null, 2);
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+function downloadTextFile(filename, content, mime = 'application/json;charset=utf-8') {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${sanitizeFileName(state.project.name)}.json`;
+    anchor.download = filename;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportProject() {
+    window.clearTimeout(state.historyTimer);
+    pushHistory();
+    const content = JSON.stringify(state.project, null, 2);
+    downloadTextFile(`${sanitizeFileName(state.project.name)}.json`, content);
     setMessage('项目 JSON 已导出');
     toast('项目 JSON 已导出', 'success');
+}
+
+function exportJavaScript(mode) {
+    try {
+        const isReadable = mode === 'readable';
+        const code = isReadable
+            ? generateReadableJavaScript(state.project)
+            : generateJavaScriptModule(state.project);
+        const suffix = isReadable ? 'readable' : 'module';
+        downloadTextFile(
+            `${sanitizeFileName(state.project.name)}.${suffix}.js`,
+            code,
+            'text/javascript;charset=utf-8'
+        );
+        const label = isReadable ? '可读组件代码' : 'JavaScript 模块';
+        setMessage(`已导出 ${label}`);
+        toast(`${label}已导出`, 'success');
+    } catch (error) {
+        console.error(error);
+        toast(`导出 JavaScript 失败：${error.message}`, 'error', 4200);
+        setMessage('导出 JavaScript 失败');
+    }
 }
 
 async function importProjectFile(file) {
@@ -1806,6 +1836,7 @@ async function importProjectFile(file) {
 // ==================== 预览 ====================
 function togglePreview() {
     if (state.drag) return;
+    closeExportMenu();
     state.preview = !state.preview;
     document.body.classList.toggle('preview-mode', state.preview);
     const button = document.querySelector('[data-action="preview"]');
@@ -1823,6 +1854,9 @@ function togglePreview() {
 
 // ==================== 键盘快捷键 ====================
 function handleKeyDown(event) {
+    if (event.key === 'Escape') {
+        closeExportMenu();
+    }
     if (isTextInputTarget(event.target)) return;
 
     if (event.key === 'Escape') {
@@ -1994,6 +2028,24 @@ function buildPalette() {
     });
 }
 
+function setExportMenuOpen(open) {
+    const menu = document.querySelector('[data-menu="export-js"]');
+    const toggle = document.querySelector('[data-action="export-js"]');
+    if (!menu || !toggle) return;
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function closeExportMenu() {
+    setExportMenuOpen(false);
+}
+
+function toggleExportMenu() {
+    const menu = document.querySelector('[data-menu="export-js"]');
+    if (!menu) return;
+    setExportMenuOpen(menu.hidden);
+}
+
 function bindToolbar() {
     document.querySelectorAll('[data-action]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -2007,6 +2059,31 @@ function bindToolbar() {
             else if (action === 'preview') togglePreview();
         });
     });
+
+    const exportToggle = document.querySelector('[data-action="export-js"]');
+    if (exportToggle) {
+        exportToggle.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleExportMenu();
+        });
+    }
+
+    document.querySelectorAll('[data-export-js]').forEach((item) => {
+        item.addEventListener('click', () => {
+            closeExportMenu();
+            exportJavaScript(item.dataset.exportJs);
+        });
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (!(event.target instanceof Element) ||
+            !event.target.closest('.toolbar-dropdown')) {
+            closeExportMenu();
+        }
+    });
+
+    window.addEventListener('blur', closeExportMenu);
 
     dom.fileInput.addEventListener('change', () => {
         importProjectFile(dom.fileInput.files?.[0]);
