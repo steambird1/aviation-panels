@@ -507,23 +507,27 @@ export class Display extends BaseComponent {
         this.wrapperDiv.className = 'component-wrapper';
         this.wrapperDiv.setAttribute('data-cmp-name', this.cmpName);
         this.wrapperDiv.style.overflow = 'visible';
+        this.wrapperDiv.style.width = '100%';
+        this.wrapperDiv.style.height = '100%';
 
         // 描述性标签
         this.labelDiv = null;
         this._renderLabel();
 
-        // 显示屏容器
+        // 显示屏容器：填满网格区域，Canvas 内容按比例缩放
         const displayContainer = document.createElement('div');
         displayContainer.className = 'display-container';
-        displayContainer.style.width = this.canvasWidth + 'px';
-        displayContainer.style.height = this.canvasHeight + 'px';
-        displayContainer.style.flexShrink = '0';
+        displayContainer.style.width = '100%';
+        displayContainer.style.height = '100%';
+        displayContainer.style.minWidth = '0';
+        displayContainer.style.minHeight = '0';
 
         this.canvas = document.createElement('canvas');
         this.canvas.width = this.canvasWidth;
         this.canvas.height = this.canvasHeight;
-        this.canvas.style.width = this.canvasWidth + 'px';
-        this.canvas.style.height = this.canvasHeight + 'px';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.objectFit = 'contain';
         this.ctx = this.canvas.getContext('2d');
 
         displayContainer.appendChild(this.canvas);
@@ -551,21 +555,18 @@ export class Display extends BaseComponent {
         this.canvasHeight = height;
         this.canvas.width = width;
         this.canvas.height = height;
-        this.canvas.style.width = width + 'px';
-        this.canvas.style.height = height + 'px';
-        const container = this.canvas.parentElement;
-        if (container) {
-            container.style.width = width + 'px';
-            container.style.height = height + 'px';
-        }
+        // 显示区域由网格决定，宽度/高度只决定绘制分辨率与比例
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.objectFit = 'contain';
     }
 
     setGridPosition(row, col, rowSpan, colSpan) {
         super.setGridPosition(row, col, rowSpan, colSpan);
-        // 显示屏使用其canvas实际大小，wrapper需要足够大
         if (this.wrapperDiv) {
-            this.wrapperDiv.style.minWidth = this.canvasWidth + 'px';
-            this.wrapperDiv.style.minHeight = this.canvasHeight + 'px';
+            // 清除旧版本留下的固定最小尺寸，让显示区域跟随网格伸缩
+            this.wrapperDiv.style.minWidth = '0';
+            this.wrapperDiv.style.minHeight = '0';
         }
     }
 }
@@ -958,6 +959,7 @@ export class IndicatorLightGroup extends BaseComponent {
             backgroundColor = 'green',
             foregroundColor = 'white',
             gap = 4,
+            fontSize = 8,
             label = '',
             labelPosition = 'top',
             labelOrientation = 'horizontal',
@@ -968,6 +970,9 @@ export class IndicatorLightGroup extends BaseComponent {
         this.gap = clamp(Number(gap) || 0, 0, 20);
         this.backgroundColor = backgroundColor || 'green';
         this.foregroundColor = foregroundColor || 'white';
+        this.fontSize = Number.isFinite(Number(fontSize))
+            ? clamp(Math.round(Number(fontSize)), 5, 24)
+            : 8;
         this.labelText = label;
         this.labelPosition = normalizeLabelPosition(labelPosition);
         this.labelOrientation = normalizeLabelOrientation(labelOrientation);
@@ -1047,7 +1052,7 @@ export class IndicatorLightGroup extends BaseComponent {
                 background: '#161a20',
                 color: '#4a505a',
                 fontFamily: 'var(--font-main, Bahnschrift, Segoe UI, Arial, sans-serif)',
-                fontSize: '7px',
+                fontSize: `${this.fontSize}px`,
                 fontWeight: '700',
                 lineHeight: '1',
                 letterSpacing: '0.02em',
@@ -1181,6 +1186,16 @@ export class IndicatorLightGroup extends BaseComponent {
         return this;
     }
 
+    setFontSize(size) {
+        const value = Number(size);
+        if (!Number.isFinite(value)) return this;
+        this.fontSize = clamp(Math.round(value), 5, 24);
+        this.lampEls.forEach((lamp) => {
+            lamp.style.fontSize = `${this.fontSize}px`;
+        });
+        return this;
+    }
+
     // 兼容 updateDisplay：upperLight 可以是单灯亮度或整个灯组的亮度数组
     updateLights(upperLight) {
         if (Array.isArray(upperLight)) {
@@ -1200,6 +1215,7 @@ export class IndicatorLightGroup extends BaseComponent {
             backgroundColor: this.backgroundColor,
             foregroundColor: this.foregroundColor,
             gap: this.gap,
+            fontSize: this.fontSize,
         };
     }
 

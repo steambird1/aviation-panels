@@ -520,13 +520,15 @@ updateDisplay({
 
 | 属性 | 类型 | 默认值 | 取值范围 | 说明 |
 | --- | --- | --- | --- | --- |
-| `width` | number | `132` | `32 ~ 800` | Canvas 宽度，单位 px。 |
-| `height` | number | `132` | `32 ~ 800` | Canvas 高度，单位 px。 |
+| `width` | number | `132` | `32 ~ 800` | Canvas 绘制分辨率宽度，单位 px。 |
+| `height` | number | `132` | `32 ~ 800` | Canvas 绘制分辨率高度，单位 px。 |
 | `label` | string | `"DISPLAY"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
 
 `Display` 在项目文件中只保存 Canvas 尺寸，**不保存 Canvas 绘制内容**。
+
+显示区域由组件网格 `grid` 决定：显示屏的黑色区域会铺满网格，Canvas 内容按 `width / height` 的原始比例缩放并居中显示。
 
 绘制内容需要在运行时通过组件实例完成：
 
@@ -559,6 +561,7 @@ attitude.updateDisplay(5, -10);
     "backgroundColor": "green",
     "foregroundColor": "white",
     "gap": 4,
+    "fontSize": 8,
     "label": "SYSTEM LIGHTS",
     "labelPosition": "top",
     "labelOrientation": "horizontal"
@@ -575,6 +578,7 @@ attitude.updateDisplay(5, -10);
 | `backgroundColor` | string | `"green"` | CSS 颜色 | 灯组内所有灯的点亮颜色。 |
 | `foregroundColor` | string | `"white"` | CSS 颜色 | 灯组内所有灯的文字颜色。 |
 | `gap` | number | `4` | `0 ~ 20` | 单元格间距，单位 px。 |
+| `fontSize` | number | `8` | `5 ~ 24` | 灯内文字大小，单位 px。 |
 | `label` | string | `"LIGHT GROUP"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
@@ -797,6 +801,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
             "backgroundColor": "green",
             "foregroundColor": "white",
             "gap": 4,
+            "fontSize": 8,
             "label": "SYSTEM LIGHTS",
             "labelPosition": "top",
             "labelOrientation": "horizontal"

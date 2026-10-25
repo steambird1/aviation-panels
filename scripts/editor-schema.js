@@ -131,6 +131,7 @@ export const COMPONENT_TYPES = {
             backgroundColor: 'green',
             foregroundColor: 'white',
             gap: 4,
+            fontSize: 8,
             label: 'LIGHT GROUP',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -139,6 +140,7 @@ export const COMPONENT_TYPES = {
             NUMBER('rows', '行数', { min: 1, max: 8, step: 1, integer: true }),
             NUMBER('columns', '列数', { min: 1, max: 8, step: 1, integer: true }),
             NUMBER('gap', '灯间距 (px)', { min: 0, max: 20, step: 1, integer: true }),
+            NUMBER('fontSize', '灯内文字大小 (px)', { min: 5, max: 24, step: 1, integer: true }),
             { key: 'texts', label: '灯光文本', type: 'array', hint: '按行优先排列，用英文逗号分隔' },
             {
                 key: 'brightness',
@@ -302,8 +304,11 @@ export const COMPONENT_TYPES = {
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
-            NUMBER('width', '宽度 (px)', { min: 32, max: 800, step: 1, integer: true }),
-            NUMBER('height', '高度 (px)', { min: 32, max: 800, step: 1, integer: true }),
+            NUMBER('width', '画布分辨率宽 (px)', {
+                min: 32, max: 800, step: 1, integer: true,
+                hint: '显示区域由网格决定；分辨率决定 Canvas 绘制精度与比例',
+            }),
+            NUMBER('height', '画布分辨率高 (px)', { min: 32, max: 800, step: 1, integer: true }),
         ]),
     },
 };
