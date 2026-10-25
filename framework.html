@@ -13,7 +13,7 @@
     <div id="panels-container" class="main-panel-div"></div>
 
     <script type="module">
-        import {Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, KnobDiscrete, KnobContinuous, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous, KnobInfinite} from "/scripts/panels.js";
+        import {Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous, KnobInfinite} from "/scripts/panels.js";
         import {AttitudeIndication} from "/scripts/att.js";
         import {AirspeedIndication} from "/scripts/airspeed.js";
         import {AltitudeIndication} from "/scripts/alt.js";
@@ -22,7 +22,7 @@
         (function() {
             
             console.log('空客驾驶舱风格组件库已加载。');
-            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, KnobDiscrete, KnobContinuous, KnobInfinite, Lever, LeverContinuous');
+            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, Lever, LeverContinuous');
             console.log('全局函数: updateDisplay({cmpName, upperLight, lowerLight})');
             console.log('组件文本标识: labelPosition = top | bottom | left | right；左右侧可加 labelOrientation: "vertical" 竖排');
             console.log('所有组件通过 CockpitComponents 命名空间访问。');
@@ -448,10 +448,66 @@
                     updateDisplay({ cmpName: 'light-warn', upperLight: lampTestOn ? 95 : 0 });
                 });
 
+                // --- 指示灯组：每颗灯只占单元格的一部分 ---
+                const panel3 = new Panel('panel-3', {
+                    columns: 8,
+                    rows: 4,
+                    cellSize: 44,
+                    gap: 8,
+                    panelId: 'lights-panel',
+                });
+
+                const lightFull = new IndicatorLight('light-full', {
+                    text: 'FULL',
+                    backgroundColor: 'green',
+                    foregroundColor: 'white',
+                    initialBrightness: 90,
+                    label: 'FULL AREA',
+                    labelPosition: 'top',
+                });
+                panel3.addComponent(lightFull, { row: 1, col: 5, rowSpan: 1, colSpan: 2 });
+
+                const lightGroup = new IndicatorLightGroup('light-group', {
+                    rows: 3,
+                    columns: 3,
+                    texts: ['APU', 'BLEED', 'FUEL', 'HYD', 'ELEC', 'NAV', 'COM', 'CAB', 'GPU'],
+                    brightness: [85, 0, 0, 0, 80, 0, 0, 0, 65],
+                    backgroundColor: 'green',
+                    foregroundColor: 'white',
+                    gap: 4,
+                    label: 'SYSTEM LIGHTS',
+                    labelPosition: 'top',
+                });
+                panel3.addComponent(lightGroup, { row: 1, col: 1, rowSpan: 3, colSpan: 3 });
+
+                const groupPatterns = [
+                    [85, 0, 0, 0, 80, 0, 0, 0, 65],
+                    [0, 90, 0, 90, 0, 90, 0, 90, 0],
+                    [100, 100, 100, 0, 0, 0, 0, 0, 0],
+                    [40, 40, 40, 40, 40, 40, 40, 40, 40],
+                ];
+                let groupPatternIndex = 0;
+                const btnGroupCycle = new ButtonSimple('btn-light-group-cycle', {
+                    text: 'CYCLE',
+                    label: 'LIGHT GROUP TEST',
+                    labelPosition: 'bottom',
+                });
+                panel3.addComponent(btnGroupCycle, { row: 2, col: 5, rowSpan: 1, colSpan: 2 });
+                btnGroupCycle.on('click', () => {
+                    groupPatternIndex = (groupPatternIndex + 1) % groupPatterns.length;
+                    lightGroup.setBrightnesses(groupPatterns[groupPatternIndex]);
+                    console.log(`指示灯组模式: ${groupPatternIndex + 1}`);
+                });
+
+                lightGroup.on('change', (data) => {
+                    console.log(`指示灯组 ${data.cmpName} 状态: ${data.brightnesses.map((v) => Math.round(v)).join(', ')}`);
+                });
+
                 console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');
                 console.log('尝试在控制台运行: updateDisplay({cmpName: "btn-fd", lowerLight: 90})');
                 console.log('或: updateDisplay({cmpName: "btn-master-caution", upperLight: 95, lowerLight: 0})');
                 console.log('指示灯: updateDisplay({cmpName: "light-fault", upperLight: 90})');
+                console.log('指示灯组: updateDisplay({cmpName: "light-group", lights: [100, 0, 0, 0, 100, 0, 0, 0, 100]})');
             }
 
             // 页面加载完成后运行演示

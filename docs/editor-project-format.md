@@ -62,6 +62,7 @@ type ComponentType =
   | 'ButtonSimple'
   | 'ButtonWithLights'
   | 'IndicatorLight'
+  | 'IndicatorLightGroup'
   | 'KnobDiscrete'
   | 'KnobContinuous'
   | 'KnobInfinite'
@@ -217,6 +218,7 @@ type ComponentType =
 | `ButtonSimple` | 普通按钮 | `2 × 1` |
 | `ButtonWithLights` | 带灯按钮 | `2 × 1` |
 | `IndicatorLight` | 指示灯 | `2 × 1` |
+| `IndicatorLightGroup` | 指示灯组 | `3 × 3` |
 | `KnobDiscrete` | 离散旋钮 | `2 × 2` |
 | `KnobContinuous` | 连续旋钮 | `2 × 2` |
 | `KnobInfinite` | 无限旋钮 | `2 × 2` |
@@ -318,6 +320,8 @@ type ComponentType =
 | `label` | string | `"INDICATOR"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
+
+`IndicatorLight` 的亮灯区域会铺满整个组件区域。
 
 运行时可通过 `updateDisplay()` 更新：
 
@@ -538,6 +542,96 @@ attitude.updateDisplay(5, -10);
 
 ---
 
+### 6.10 IndicatorLightGroup — 指示灯组
+
+`IndicatorLightGroup` 将多颗指示灯排布成表格状灯阵。整个组件占据一个较大的控件区域，而每颗灯只占据所在单元格的一部分。
+
+```json
+{
+  "id": "light-group",
+  "type": "IndicatorLightGroup",
+  "grid": { "row": 1, "col": 1, "rowSpan": 3, "colSpan": 3 },
+  "props": {
+    "rows": 3,
+    "columns": 3,
+    "texts": ["APU", "BLEED", "FUEL", "HYD", "ELEC", "NAV", "COM", "CAB", "GPU"],
+    "brightness": [85, 0, 0, 0, 80, 0, 0, 0, 65],
+    "backgroundColor": "green",
+    "foregroundColor": "white",
+    "gap": 4,
+    "label": "SYSTEM LIGHTS",
+    "labelPosition": "top",
+    "labelOrientation": "horizontal"
+  }
+}
+```
+
+| 属性 | 类型 | 默认值 | 取值范围 | 说明 |
+| --- | --- | --- | --- | --- |
+| `rows` | number | `3` | `1 ~ 8` | 灯阵行数。 |
+| `columns` | number | `3` | `1 ~ 8` | 灯阵列数。 |
+| `texts` | string[] | `["1","2","3","4","5","6","7","8","9"]` | — | 每颗灯的文本，**按行优先**排列。缺少的项为空字符串。 |
+| `brightness` | number[] | `[80,0,0,0,80,0,0,0,80]` | 每项 `0 ~ 100` | 每颗灯的初始亮度，按行优先排列。缺少的灯为熄灭状态。 |
+| `backgroundColor` | string | `"green"` | CSS 颜色 | 灯组内所有灯的点亮颜色。 |
+| `foregroundColor` | string | `"white"` | CSS 颜色 | 灯组内所有灯的文字颜色。 |
+| `gap` | number | `4` | `0 ~ 20` | 单元格间距，单位 px。 |
+| `label` | string | `"LIGHT GROUP"` | — | 外部标签。 |
+| `labelPosition` | string | `"top"` | — | 标签位置。 |
+| `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
+
+灯阵索引从 `0` 开始，按行优先排列：
+
+```text
+0  1  2
+3  4  5
+6  7  8
+```
+
+单颗灯的亮灯区域只占所在单元格的一部分（约 64%），单元格本身保持暗色，从而形成传统指示灯组的外观。
+
+#### 运行时更新
+
+单颗灯：
+
+```js
+const group = getComponentByName('light-group');
+
+group.setLightBrightness(4, 90);
+```
+
+整组灯：
+
+```js
+group.setBrightnesses([100, 0, 0, 0, 100, 0, 0, 0, 100]);
+// 未提供的索引会设为 0
+// 或：
+group.setAllBrightness(0);
+```
+
+通过全局 `updateDisplay()`：
+
+```js
+updateDisplay({
+  cmpName: 'light-group',
+  lights: [100, 0, 0, 0, 100, 0, 0, 0, 100],
+});
+
+updateDisplay({
+  cmpName: 'light-group',
+  lightIndex: 4,
+  brightness: 90,
+});
+```
+
+读取状态：
+
+```js
+group.getBrightness(4);   // 单颗灯亮度
+group.getBrightnesses();  // 整个灯组亮度数组
+```
+
+---
+
 ## 7. 完整示例
 
 ```json
@@ -690,6 +784,23 @@ attitude.updateDisplay(5, -10);
             "labelPosition": "bottom",
             "labelOrientation": "horizontal"
           }
+        },
+        {
+          "id": "light-group",
+          "type": "IndicatorLightGroup",
+          "grid": { "row": 3, "col": 1, "rowSpan": 2, "colSpan": 2 },
+          "props": {
+            "rows": 2,
+            "columns": 2,
+            "texts": ["APU", "BLEED", "HYD", "ELEC"],
+            "brightness": [100, 0, 0, 80],
+            "backgroundColor": "green",
+            "foregroundColor": "white",
+            "gap": 4,
+            "label": "SYSTEM LIGHTS",
+            "labelPosition": "top",
+            "labelOrientation": "horizontal"
+          }
         }
       ]
     }
@@ -719,6 +830,8 @@ attitude.updateDisplay(5, -10);
 14. 检测到组件重叠时产生警告，但不会自动调整已有布局。
 15. `version` 会被规范化为当前版本 `1`。
 16. `name` 为空时会回退为 `"未命名项目"`。
+
+对于 `IndicatorLightGroup`，`texts` 和 `brightness` 会按 `rows × columns` 使用：缺少的项按空文本 / `0` 亮度处理，多余的项会被忽略。
 
 > 编辑器导入时对重叠只提示、不强制修正；但之后在编辑器中拖动或缩放组件时会继续阻止产生新的重叠。
 

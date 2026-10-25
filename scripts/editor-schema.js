@@ -116,6 +116,45 @@ export const COMPONENT_TYPES = {
         ]),
     },
 
+    IndicatorLightGroup: {
+        label: '指示灯组',
+        shortLabel: '灯组',
+        group: 'lights',
+        prefix: 'lightgroup',
+        icon: '▦',
+        defaultGrid: { colSpan: 3, rowSpan: 3 },
+        defaults: {
+            rows: 3,
+            columns: 3,
+            texts: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+            brightness: [80, 0, 0, 0, 80, 0, 0, 0, 80],
+            backgroundColor: 'green',
+            foregroundColor: 'white',
+            gap: 4,
+            label: 'LIGHT GROUP',
+            labelPosition: 'top',
+            labelOrientation: 'horizontal',
+        },
+        fields: withLabelFields([
+            NUMBER('rows', '行数', { min: 1, max: 8, step: 1, integer: true }),
+            NUMBER('columns', '列数', { min: 1, max: 8, step: 1, integer: true }),
+            NUMBER('gap', '灯间距 (px)', { min: 0, max: 20, step: 1, integer: true }),
+            { key: 'texts', label: '灯光文本', type: 'array', hint: '按行优先排列，用英文逗号分隔' },
+            {
+                key: 'brightness',
+                label: '初始亮度',
+                type: 'numberArray',
+                min: 0,
+                max: 100,
+                step: 1,
+                integer: true,
+                hint: '按行优先排列，0 为熄灭，100 为最亮；缺少的灯为熄灭',
+            },
+            COLOR('backgroundColor', '背景 / 发光颜色'),
+            COLOR('foregroundColor', '前景 / 文字颜色'),
+        ]),
+    },
+
     KnobDiscrete: {
         label: '离散旋钮',
         shortLabel: '离散旋钮',
@@ -271,7 +310,7 @@ export const COMPONENT_TYPES = {
 
 export const COMPONENT_GROUPS = [
     { id: 'buttons', label: '按钮', types: ['ButtonSimple', 'ButtonWithLights'] },
-    { id: 'lights', label: '指示灯', types: ['IndicatorLight'] },
+    { id: 'lights', label: '指示灯', types: ['IndicatorLight', 'IndicatorLightGroup'] },
     { id: 'knobs', label: '旋钮', types: ['KnobDiscrete', 'KnobContinuous', 'KnobInfinite'] },
     { id: 'levers', label: '拨杆', types: ['Lever', 'LeverContinuous'] },
     { id: 'displays', label: '显示屏', types: ['Display'] },
@@ -395,6 +434,24 @@ export function normalizeComponentProps(type, rawProps = {}) {
                     list = cloneValue(fallback) || ['ITEM'];
                 }
                 props[field.key] = list;
+                break;
+            }
+            case 'numberArray': {
+                let list = value;
+                if (typeof list === 'string') {
+                    list = list.split(/[,\n]/);
+                }
+                if (!Array.isArray(list)) list = cloneValue(fallback) || [];
+                props[field.key] = list
+                    .filter((item) => item !== '' && item !== null && item !== undefined)
+                    .map((item) => {
+                        let number = Number(item);
+                        if (!Number.isFinite(number)) number = 0;
+                        if (field.integer) number = Math.round(number);
+                        if (field.min !== undefined) number = Math.max(field.min, number);
+                        if (field.max !== undefined) number = Math.min(field.max, number);
+                        return number;
+                    });
                 break;
             }
             case 'select': {

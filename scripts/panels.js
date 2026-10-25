@@ -59,6 +59,39 @@ function getDimColor(color, percent, darkColor = '#0b0d11') {
     return `color-mix(in srgb, ${color} ${clamp(percent, 0, 100)}%, ${darkColor})`;
 }
 
+function normalizeBrightness(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? clamp(number, 0, 100) : 0;
+}
+
+// 指示灯/灯组的单个灯芯共用同一套亮灭样式
+function applyIndicatorLightStyle(element, brightness, backgroundColor, foregroundColor) {
+    if (!element) return;
+    const b = clamp(brightness, 0, 100);
+    const bgColor = getColorVar(backgroundColor);
+    const fgColor = getColorVar(foregroundColor);
+
+    if (b <= 0) {
+        element.classList.remove('lit');
+        element.style.background = getDimColor(bgColor, 18);
+        element.style.color = getDimColor(fgColor, 32);
+        element.style.borderColor = getDimColor(bgColor, 34);
+        element.style.boxShadow = 'inset 0 2px 6px rgba(0, 0, 0, 0.55)';
+        element.style.textShadow = 'none';
+        return;
+    }
+
+    element.classList.add('lit');
+    const intensity = b / 100;
+    const glowSize = 4 + intensity * 10;
+    element.style.background = getDimColor(bgColor, 30 + intensity * 70);
+    element.style.color = fgColor;
+    element.style.borderColor = bgColor;
+    element.style.boxShadow =
+        `0 0 ${glowSize}px ${bgColor}, inset 0 0 ${glowSize * 0.6}px ${bgColor}`;
+    element.style.textShadow = `0 0 ${3 + intensity * 6}px ${fgColor}`;
+}
+
 // ==================== 旋钮拖拽工具 ====================
 function normalizeAngle(angleDeg) {
     let a = angleDeg % 360;
@@ -793,7 +826,7 @@ export class IndicatorLight extends BaseComponent {
 
         let initial = brightness !== undefined ? brightness : initialBrightness;
         if (lit !== undefined) initial = lit ? 100 : 0;
-        this._brightness = clamp(initial, 0, 100);
+        this._brightness = normalizeBrightness(initial);
 
         this._buildIndicator();
     }
@@ -820,38 +853,16 @@ export class IndicatorLight extends BaseComponent {
     }
 
     _applyBrightness() {
-        if (!this.indicatorEl) return;
-
-        const b = this._brightness;
-        const bgColor = getColorVar(this.backgroundColor);
-        const fgColor = getColorVar(this.foregroundColor);
-        const el = this.indicatorEl;
-
-        if (b <= 0) {
-            // 熄灭状态：保留暗淡的底色和暗淡的文字颜色
-            el.classList.remove('lit');
-            el.style.background = getDimColor(bgColor, 18);
-            el.style.color = getDimColor(fgColor, 32);
-            el.style.borderColor = getDimColor(bgColor, 34);
-            el.style.boxShadow = 'inset 0 2px 6px rgba(0, 0, 0, 0.55)';
-            el.style.textShadow = 'none';
-            return;
-        }
-
-        el.classList.add('lit');
-        const intensity = b / 100;
-        const glowSize = 4 + intensity * 10;
-        // 亮度越低，底色越接近熄灭时的暗色
-        el.style.background = getDimColor(bgColor, 30 + intensity * 70);
-        el.style.color = fgColor;
-        el.style.borderColor = bgColor;
-        el.style.boxShadow =
-            `0 0 ${glowSize}px ${bgColor}, inset 0 0 ${glowSize * 0.6}px ${bgColor}`;
-        el.style.textShadow = `0 0 ${3 + intensity * 6}px ${fgColor}`;
+        applyIndicatorLightStyle(
+            this.indicatorEl,
+            this._brightness,
+            this.backgroundColor,
+            this.foregroundColor
+        );
     }
 
     setBrightness(brightness) {
-        const newBrightness = clamp(brightness, 0, 100);
+        const newBrightness = normalizeBrightness(brightness);
         if (Math.abs(newBrightness - this._brightness) > 0.0001) {
             this._brightness = newBrightness;
             this._applyBrightness();
@@ -910,6 +921,216 @@ export class IndicatorLight extends BaseComponent {
             foregroundColor: this.foregroundColor,
             initialBrightness: this._brightness,
         };
+    }
+}
+
+// ==================== 指示灯组 ====================
+export class IndicatorLightGroup extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            rows = 3,
+            columns = 3,
+            texts = [],
+            brightness = [],
+            backgroundColor = 'green',
+            foregroundColor = 'white',
+            gap = 4,
+            label = '',
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
+        } = options;
+
+        this.rows = clamp(Math.round(rows), 1, 8);
+        this.columns = clamp(Math.round(columns), 1, 8);
+        this.gap = clamp(Number(gap) || 0, 0, 20);
+        this.backgroundColor = backgroundColor || 'green';
+        this.foregroundColor = foregroundColor || 'white';
+        this.labelText = label;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
+
+        const count = this.rows * this.columns;
+        const rawTexts = Array.isArray(texts) ? texts : [];
+        const rawBrightness = Array.isArray(brightness) ? brightness : [];
+        this._texts = Array.from({ length: count }, (_, index) =>
+            String(rawTexts[index] ?? '')
+        );
+        this._brightness = Array.from({ length: count }, (_, index) =>
+            normalizeBrightness(rawBrightness[index])
+        );
+
+        this._buildGroup();
+    }
+
+    _buildGroup() {
+        this._renderLabel();
+
+        const oldGroup = this.wrapperDiv.querySelector('.indicator-light-group');
+        if (oldGroup) oldGroup.remove();
+
+        this.groupEl = document.createElement('div');
+        this.groupEl.className = 'indicator-light-group';
+        this.groupEl.setAttribute('role', 'group');
+        this.groupEl.setAttribute('aria-label', this.cmpName);
+        this.groupEl.style.setProperty('--ilg-columns', String(this.columns));
+        this.groupEl.style.setProperty('--ilg-rows', String(this.rows));
+        this.groupEl.style.setProperty('--ilg-gap', `${this.gap}px`);
+
+        this.cellEls = [];
+        this.lampEls = [];
+
+        for (let index = 0; index < this.rows * this.columns; index += 1) {
+            const cell = document.createElement('div');
+            cell.className = 'indicator-light-group-cell';
+
+            const lamp = document.createElement('div');
+            lamp.className = 'indicator-light-group-lamp';
+            lamp.dataset.index = String(index);
+            lamp.setAttribute('role', 'status');
+
+            const textEl = document.createElement('span');
+            textEl.className = 'indicator-light-group-lamp-text';
+            textEl.textContent = this._texts[index] || '';
+            lamp.appendChild(textEl);
+
+            cell.appendChild(lamp);
+            this.groupEl.appendChild(cell);
+            this.cellEls.push(cell);
+            this.lampEls.push(lamp);
+        }
+
+        this.wrapperDiv.appendChild(this.groupEl);
+        this._applyAllBrightness();
+    }
+
+    _applyAllBrightness() {
+        this._brightness.forEach((value, index) => {
+            applyIndicatorLightStyle(
+                this.lampEls[index],
+                value,
+                this.backgroundColor,
+                this.foregroundColor
+            );
+        });
+    }
+
+    _applyBrightnessAt(index) {
+        applyIndicatorLightStyle(
+            this.lampEls[index],
+            this._brightness[index],
+            this.backgroundColor,
+            this.foregroundColor
+        );
+    }
+
+    _emitGroupChange(index) {
+        this._emit('change', {
+            cmpName: this.cmpName,
+            index,
+            brightness: this._brightness[index],
+            brightnesses: [...this._brightness],
+            lit: this._brightness[index] > 0,
+        });
+    }
+
+    setLightBrightness(index, brightness) {
+        const targetIndex = Math.round(Number(index));
+        if (!Number.isInteger(targetIndex) ||
+            targetIndex < 0 || targetIndex >= this._brightness.length) {
+            return this;
+        }
+        const value = normalizeBrightness(brightness);
+        if (Math.abs(value - this._brightness[targetIndex]) > 0.0001) {
+            this._brightness[targetIndex] = value;
+            this._applyBrightnessAt(targetIndex);
+            this._emitGroupChange(targetIndex);
+        }
+        return this;
+    }
+
+    setBrightnesses(values) {
+        if (!Array.isArray(values)) return this;
+        this._brightness = this._brightness.map((current, index) => {
+            const value = Number(values[index]);
+            return Number.isFinite(value) ? clamp(value, 0, 100) : 0;
+        });
+        this._applyAllBrightness();
+        this._emit('change', {
+            cmpName: this.cmpName,
+            brightnesses: [...this._brightness],
+        });
+        return this;
+    }
+
+    setAllBrightness(brightness) {
+        const value = normalizeBrightness(brightness);
+        this._brightness = this._brightness.map(() => value);
+        this._applyAllBrightness();
+        this._emit('change', {
+            cmpName: this.cmpName,
+            brightnesses: [...this._brightness],
+        });
+        return this;
+    }
+
+    getBrightness(index) {
+        const targetIndex = Math.round(Number(index));
+        return Number.isInteger(targetIndex) ? this._brightness[targetIndex] : undefined;
+    }
+
+    getBrightnesses() {
+        return [...this._brightness];
+    }
+
+    setLightText(index, text) {
+        const targetIndex = Math.round(Number(index));
+        if (!Number.isInteger(targetIndex) ||
+            targetIndex < 0 || targetIndex >= this._texts.length) {
+            return this;
+        }
+        this._texts[targetIndex] = String(text ?? '');
+        const textEl = this.lampEls[targetIndex]?.querySelector('.indicator-light-group-lamp-text');
+        if (textEl) textEl.textContent = this._texts[targetIndex];
+        return this;
+    }
+
+    setBackgroundColor(color) {
+        this.backgroundColor = color || 'green';
+        this._applyAllBrightness();
+        return this;
+    }
+
+    setForegroundColor(color) {
+        this.foregroundColor = color || 'white';
+        this._applyAllBrightness();
+        return this;
+    }
+
+    // 兼容 updateDisplay：upperLight 可以是单灯亮度或整个灯组的亮度数组
+    updateLights(upperLight) {
+        if (Array.isArray(upperLight)) {
+            this.setBrightnesses(upperLight);
+        } else if (upperLight !== undefined) {
+            this.setAllBrightness(upperLight);
+        }
+    }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            rows: this.rows,
+            columns: this.columns,
+            texts: [...this._texts],
+            brightness: [...this._brightness],
+            backgroundColor: this.backgroundColor,
+            foregroundColor: this.foregroundColor,
+            gap: this.gap,
+        };
+    }
+
+    getLightElement(index) {
+        return this.lampEls[index] || null;
     }
 }
 
@@ -2084,9 +2305,23 @@ export const updateDisplay = function(params) {
         console.warn(`updateDisplay: 未找到组件 "${params.cmpName}"`);
         return;
     }
-    if (typeof component.updateLights === 'function') {
+
+    let handled = false;
+    if (Array.isArray(params.lights) && typeof component.setBrightnesses === 'function') {
+        component.setBrightnesses(params.lights);
+        handled = true;
+    } else if (params.lightIndex !== undefined &&
+        typeof component.setLightBrightness === 'function') {
+        component.setLightBrightness(
+            params.lightIndex,
+            params.brightness !== undefined ? params.brightness : 100
+        );
+        handled = true;
+    }
+
+    if (!handled && typeof component.updateLights === 'function') {
         component.updateLights(params.upperLight, params.lowerLight);
-    } else {
+    } else if (!handled) {
         console.warn(`updateDisplay: 组件 "${params.cmpName}" 不支持指示灯更新`);
     }
 };
@@ -2097,6 +2332,7 @@ const COMPONENT_CLASS_MAP = {
     ButtonSimple,
     ButtonWithLights,
     IndicatorLight,
+    IndicatorLightGroup,
     KnobDiscrete,
     KnobContinuous,
     KnobInfinite,

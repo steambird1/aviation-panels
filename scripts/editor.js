@@ -143,6 +143,15 @@ function parseArrayInput(value) {
         .filter(Boolean);
 }
 
+function parseNumberArrayInput(value) {
+    return String(value || '')
+        .split(/[,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
+}
+
 function toHexColor(color) {
     const text = String(color || '').trim().toLowerCase();
     if (COLOR_HEX[text]) return COLOR_HEX[text];
@@ -665,6 +674,16 @@ function createFieldRow(field, value, handlers = {}) {
         input.spellcheck = false;
         input.addEventListener('input', () => {
             if (handlers.onInput) handlers.onInput(parseArrayInput(input.value));
+        });
+        input.addEventListener('change', commit);
+        row.appendChild(input);
+    } else if (field.type === 'numberArray') {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = Array.isArray(value) ? value.join(', ') : String(value ?? '');
+        input.spellcheck = false;
+        input.addEventListener('input', () => {
+            if (handlers.onInput) handlers.onInput(parseNumberArrayInput(input.value));
         });
         input.addEventListener('change', commit);
         row.appendChild(input);
