@@ -258,6 +258,37 @@ export class Panel {
     getPanelId() {
         return this.panelId;
     }
+
+    toJSON() {
+        return {
+            id: this.panelId,
+            columns: this.columns,
+            rows: this.rows,
+            cellSize: this.cellSize,
+            gap: this.gap,
+            components: this.components.map((component) => component.toJSON()),
+        };
+    }
+
+    // 从 JSON 重建面板；containerId 是面板的挂载容器
+    static fromJSON(containerId, json = {}) {
+        const panel = new Panel(containerId, {
+            columns: json.columns,
+            rows: json.rows,
+            cellSize: json.cellSize,
+            gap: json.gap,
+            panelId: json.id,
+        });
+        (json.components || []).forEach((componentJson) => {
+            const component = createComponentInstance(
+                componentJson.type,
+                componentJson.id,
+                componentJson.props || {}
+            );
+            panel.addComponent(component, componentJson.grid || {});
+        });
+        return panel;
+    }
 }
 
 // ==================== 组件基类 ====================
@@ -337,6 +368,33 @@ class BaseComponent {
         this.labelOrientation = normalizeLabelOrientation(orientation);
         this._applyLabelStyle();
         return this;
+    }
+
+    getType() {
+        return this.constructor.name;
+    }
+
+    // 返回可写入项目 JSON 的构造参数；子类在此基础上追加自己的属性
+    getOptions() {
+        return {
+            label: this.labelText,
+            labelPosition: this.labelPosition,
+            labelOrientation: this.labelOrientation,
+        };
+    }
+
+    toJSON() {
+        return {
+            id: this.cmpName,
+            type: this.getType(),
+            grid: {
+                row: this.gridRow,
+                col: this.gridCol,
+                rowSpan: this.gridRowSpan,
+                colSpan: this.gridColSpan,
+            },
+            props: this.getOptions(),
+        };
     }
 
     setGridPosition(row, col, rowSpan, colSpan) {
@@ -447,6 +505,14 @@ export class Display extends BaseComponent {
         return this.ctx;
     }
 
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            width: this.canvasWidth,
+            height: this.canvasHeight,
+        };
+    }
+
     resizeCanvas(width, height) {
         this.canvasWidth = width;
         this.canvasHeight = height;
@@ -520,6 +586,13 @@ export class ButtonSimple extends BaseComponent {
 
     getButtonElement() {
         return this.buttonEl;
+    }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            text: this.buttonText,
+        };
     }
 
     // 兼容updateDisplay接口（此类型按钮无指示灯，但保持接口一致）
@@ -675,6 +748,19 @@ export class ButtonWithLights extends BaseComponent {
 
     getUpperBrightness() { return this._upperBrightness; }
     getLowerBrightness() { return this._lowerBrightness; }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            text: this.buttonText,
+            upperLightColor: this.upperLightColor,
+            lowerLightColor: this.lowerLightColor,
+            upperLightText: this.upperLightText,
+            lowerLightText: this.lowerLightText,
+            initialUpperBrightness: this._upperBrightness,
+            initialLowerBrightness: this._lowerBrightness,
+        };
+    }
 }
 
 // ==================== 独立指示灯 ====================
@@ -814,6 +900,16 @@ export class IndicatorLight extends BaseComponent {
 
     getLightElement() {
         return this.indicatorEl;
+    }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            text: this.lightText,
+            backgroundColor: this.backgroundColor,
+            foregroundColor: this.foregroundColor,
+            initialBrightness: this._brightness,
+        };
     }
 }
 
@@ -1021,6 +1117,17 @@ export class KnobDiscrete extends BaseComponent {
 
     getPosition() { return this.currentPosition; }
     getPositionName() { return this.positions[this.currentPosition]; }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            positions: [...this.positions],
+            initialPosition: this.currentPosition,
+            diameter: this.diameter,
+            arcStartAngle: this.arcStartAngle,
+            arcEndAngle: this.arcEndAngle,
+        };
+    }
 
     setPosition(posIndex) {
         const newPos = clamp(posIndex, 0, this.positions.length - 1);
@@ -1249,6 +1356,19 @@ export class KnobContinuous extends BaseComponent {
     }
 
     getValue() { return this.currentValue; }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            initialValue: this.currentValue,
+            diameter: this.diameter,
+            arcStartAngle: this.arcStartAngle,
+            arcEndAngle: this.arcEndAngle,
+            valueDisplayPrecision: this.valueDisplayPrecision,
+        };
+    }
 
     setValue(val) {
         const newVal = clamp(val, this.minValue, this.maxValue);
@@ -1497,6 +1617,16 @@ export class Lever extends BaseComponent {
     getPosition() { return this.currentPosition; }
     getPositionName() { return this.positions[this.currentPosition]; }
 
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            positions: [...this.positions],
+            initialPosition: this.currentPosition,
+            orientation: this.orientation,
+            slotLength: this.slotLength,
+        };
+    }
+
     setPosition(posIndex) {
         const newPos = clamp(posIndex, 0, this.positions.length - 1);
         if (newPos !== this.currentPosition) {
@@ -1744,6 +1874,18 @@ export class LeverContinuous extends BaseComponent {
 
     getValue() { return this.currentValue; }
 
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            initialValue: this.currentValue,
+            orientation: this.orientation,
+            slotLength: this.slotLength,
+            valueDisplayPrecision: this.valueDisplayPrecision,
+        };
+    }
+
     setValue(val) {
         const newVal = clamp(val, this.minValue, this.maxValue);
         if (Math.abs(newVal - this.currentValue) > 0.0001) {
@@ -1902,6 +2044,16 @@ export class KnobInfinite extends BaseComponent {
 
     getValue() { return this.currentValue; }
 
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            initialValue: this.currentValue,
+            valuePerRevolution: this.valuePerRevolution,
+            diameter: this.diameter,
+            valueDisplayPrecision: this.valueDisplayPrecision,
+        };
+    }
+
     setValue(val) {
         if (Math.abs(val - this.currentValue) > 0.0001) {
             this.currentValue = val;
@@ -1938,5 +2090,30 @@ export const updateDisplay = function(params) {
         console.warn(`updateDisplay: 组件 "${params.cmpName}" 不支持指示灯更新`);
     }
 };
+
+// ==================== 组件工厂 ====================
+const COMPONENT_CLASS_MAP = {
+    Display,
+    ButtonSimple,
+    ButtonWithLights,
+    IndicatorLight,
+    KnobDiscrete,
+    KnobContinuous,
+    KnobInfinite,
+    Lever,
+    LeverContinuous,
+};
+
+export function createComponentInstance(type, cmpName, options = {}) {
+    const ComponentClass = COMPONENT_CLASS_MAP[type];
+    if (!ComponentClass) {
+        throw new Error(`未知组件类型: ${type}`);
+    }
+    return new ComponentClass(cmpName, options);
+}
+
+export function getComponentTypes() {
+    return Object.keys(COMPONENT_CLASS_MAP);
+}
 
 // ==================== 导出 ====================

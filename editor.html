@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>驾驶舱界面编辑器</title>
+    <link rel="stylesheet" href="styles/panel_style.css" />
+    <link rel="stylesheet" href="styles/editor.css" />
+</head>
+<body>
+    <div id="editor-app" class="editor-app">
+        <header class="editor-toolbar">
+            <div class="toolbar-brand">
+                <span class="brand-mark">JC</span>
+                <div class="brand-text">
+                    <h1>驾驶舱界面编辑器</h1>
+                    <p>拖拽组件 · JSON 项目 · 实时预览</p>
+                </div>
+            </div>
+
+            <div class="toolbar-project">
+                <label for="project-name">项目名称</label>
+                <input id="project-name" class="project-name-input" type="text" maxlength="80" spellcheck="false" />
+            </div>
+
+            <div class="toolbar-actions">
+                <button type="button" class="toolbar-btn" data-action="new" title="新建项目">新建</button>
+                <button type="button" class="toolbar-btn" data-action="open" title="打开 JSON 项目">打开</button>
+                <button type="button" class="toolbar-btn" data-action="save" title="保存为 JSON 文件 (Ctrl+S)">保存 JSON</button>
+                <span class="toolbar-divider"></span>
+                <button type="button" class="toolbar-btn icon-btn" data-action="undo" title="撤销 (Ctrl+Z)" aria-label="撤销">↶</button>
+                <button type="button" class="toolbar-btn icon-btn" data-action="redo" title="重做 (Ctrl+Shift+Z)" aria-label="重做">↷</button>
+                <span class="toolbar-divider"></span>
+                <button type="button" class="toolbar-btn" data-action="add-panel" title="添加一个新面板">添加面板</button>
+                <button type="button" class="toolbar-btn preview-btn" data-action="preview" title="进入/退出预览模式">预览</button>
+            </div>
+
+            <input id="file-input" type="file" accept=".json,application/json" hidden />
+        </header>
+
+        <main class="editor-main">
+            <aside class="editor-palette">
+                <div class="pane-heading">
+                    <span>组件库</span>
+                    <small>拖动到画布</small>
+                </div>
+                <div id="palette-groups" class="palette-groups"></div>
+                <div class="palette-tip">
+                    提示：也可以单击组件，将其添加到当前面板的空闲位置。
+                </div>
+            </aside>
+
+            <section class="editor-workspace">
+                <div class="workspace-bar">
+                    <div>
+                        <span class="workspace-title">编辑画布</span>
+                        <span id="workspace-hint" class="workspace-hint">选择面板或组件开始编辑</span>
+                    </div>
+                    <span class="workspace-badge">JSON v1</span>
+                </div>
+                <div class="editor-canvas-wrap">
+                    <div id="editor-canvas" class="editor-canvas"></div>
+                </div>
+            </section>
+
+            <aside class="editor-inspector">
+                <div class="pane-heading">
+                    <span>属性</span>
+                    <small id="inspector-kind">项目</small>
+                </div>
+                <div id="inspector-content" class="inspector-content"></div>
+            </aside>
+        </main>
+
+        <footer class="editor-status">
+            <span id="status-selection" class="status-item">未选择对象</span>
+            <span id="status-message" class="status-item status-message">就绪</span>
+            <span id="status-storage" class="status-item status-storage">本地自动保存已开启</span>
+        </footer>
+
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script type="module" src="scripts/editor.js"></script>
+</body>
+</html>
