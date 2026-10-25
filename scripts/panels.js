@@ -841,6 +841,28 @@ export class IndicatorLight extends BaseComponent {
         this.indicatorEl.className = 'indicator-light';
         this.indicatorEl.setAttribute('role', 'status');
         this.indicatorEl.setAttribute('aria-label', this.cmpName);
+        // 关键尺寸与布局写在元素上，避免样式表缺失/缓存时退化为文字大小
+        Object.assign(this.indicatorEl.style, {
+            width: '100%',
+            height: '100%',
+            aspectRatio: 'auto',
+            boxSizing: 'border-box',
+            minWidth: '0',
+            minHeight: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            padding: '2px 8px',
+            border: '2px solid var(--border-color, #5a5d67)',
+            borderRadius: '5px',
+            fontFamily: 'var(--font-main, Bahnschrift, Segoe UI, Arial, sans-serif)',
+            fontSize: '12px',
+            fontWeight: '700',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            textAlign: 'center',
+        });
 
         this.indicatorTextEl = document.createElement('span');
         this.indicatorTextEl.className = 'indicator-light-text';
@@ -973,9 +995,20 @@ export class IndicatorLightGroup extends BaseComponent {
         this.groupEl.className = 'indicator-light-group';
         this.groupEl.setAttribute('role', 'group');
         this.groupEl.setAttribute('aria-label', this.cmpName);
-        this.groupEl.style.setProperty('--ilg-columns', String(this.columns));
-        this.groupEl.style.setProperty('--ilg-rows', String(this.rows));
-        this.groupEl.style.setProperty('--ilg-gap', `${this.gap}px`);
+        Object.assign(this.groupEl.style, {
+            width: '100%',
+            height: '100%',
+            boxSizing: 'border-box',
+            display: 'grid',
+            gridTemplateColumns: `repeat(${this.columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${this.rows}, minmax(0, 1fr))`,
+            gap: `${this.gap}px`,
+            padding: '4px',
+            background: 'linear-gradient(180deg, #1b1f27, #11151b)',
+            border: '1px solid var(--border-color, #5a5d67)',
+            borderRadius: '5px',
+            overflow: 'hidden',
+        });
 
         this.cellEls = [];
         this.lampEls = [];
@@ -983,15 +1016,56 @@ export class IndicatorLightGroup extends BaseComponent {
         for (let index = 0; index < this.rows * this.columns; index += 1) {
             const cell = document.createElement('div');
             cell.className = 'indicator-light-group-cell';
+            Object.assign(cell.style, {
+                minWidth: '0',
+                minHeight: '0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(4, 6, 9, 0.42)',
+                border: '1px solid #2d333d',
+                borderRadius: '3px',
+                overflow: 'hidden',
+            });
 
             const lamp = document.createElement('div');
             lamp.className = 'indicator-light-group-lamp';
             lamp.dataset.index = String(index);
             lamp.setAttribute('role', 'status');
+            Object.assign(lamp.style, {
+                width: '64%',
+                height: '64%',
+                minWidth: '8px',
+                minHeight: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxSizing: 'border-box',
+                padding: '1px',
+                border: '1px solid #3a414d',
+                borderRadius: '2px',
+                background: '#161a20',
+                color: '#4a505a',
+                fontFamily: 'var(--font-main, Bahnschrift, Segoe UI, Arial, sans-serif)',
+                fontSize: '7px',
+                fontWeight: '700',
+                lineHeight: '1',
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase',
+                textAlign: 'center',
+                overflow: 'hidden',
+            });
 
             const textEl = document.createElement('span');
             textEl.className = 'indicator-light-group-lamp-text';
             textEl.textContent = this._texts[index] || '';
+            Object.assign(textEl.style, {
+                display: 'block',
+                maxWidth: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+            });
             lamp.appendChild(textEl);
 
             cell.appendChild(lamp);
