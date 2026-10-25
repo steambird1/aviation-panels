@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>姿态仪与飞行指引 - Attitude Indicator</title>
+    <link rel="stylesheet" href="../styles/inst_general.css" />
+    <link rel="stylesheet" href="../styles/att.css" />
+</head>
+<body>
+    <div class="container">
+        <div class="instrument-panel">
+            <div class="instrument-wrapper">
+                <canvas id="attCanvas" class="attitude" width="132" height="132"></canvas>
+                <span class="instrument-label">姿态仪（无指引）</span>
+            </div>
+            <div class="instrument-wrapper">
+                <canvas id="attFdCanvas" class="attitude" width="132" height="132"></canvas>
+                <span class="instrument-label">姿态仪 + 飞行指引</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>✈️ 姿态与飞行指引</h3>
+
+            <div class="control-group">
+                <label>实际俯仰角 <span class="value-display" id="pitchValue">4.0°</span></label>
+                <input type="range" id="pitchSlider" min="-30" max="30" value="4" step="0.5">
+            </div>
+
+            <div class="control-group">
+                <label>实际横滚角 <span class="value-display" id="rollValue">-8°</span></label>
+                <input type="range" id="rollSlider" min="-60" max="60" value="-8" step="1">
+            </div>
+
+            <div class="control-group">
+                <label>目标俯仰角 <span class="value-display" id="fdPitchValue">12.0°</span></label>
+                <input type="range" id="fdPitchSlider" min="-30" max="30" value="12" step="0.5">
+            </div>
+
+            <div class="control-group">
+                <label>目标横滚角 <span class="value-display" id="fdRollValue">10°</span></label>
+                <input type="range" id="fdRollSlider" min="-60" max="60" value="10" step="1">
+            </div>
+
+            <div class="toggle-row">
+                <button class="toggle-btn active" id="toggleFd">显示飞行指引</button>
+                <span class="hint-text">水平杆跟随俯仰偏差，垂直杆跟随横滚偏差</span>
+            </div>
+            <div class="hint-text">指引杆位置由「目标角 − 实际角」决定，偏差过大时会限制在仪表范围内。</div>
+
+            <div class="control-group">
+                <label>指引杆颜色</label>
+                <div class="color-presets" id="fdColorPresets">
+                    <span class="color-preset active" data-color="#FFD54F" style="background:#FFD54F;" title="琥珀"></span>
+                    <span class="color-preset" data-color="#7CFC8A" style="background:#7CFC8A;" title="绿色"></span>
+                    <span class="color-preset" data-color="#00E5FF" style="background:#00E5FF;" title="青色"></span>
+                    <span class="color-preset" data-color="#FF4FD8" style="background:#FF4FD8;" title="品红"></span>
+                    <span class="color-preset" data-color="#FFFFFF" style="background:#FFFFFF;" title="白色"></span>
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button class="btn" id="btnCenterFd">目标 = 实际</button>
+                <button class="btn" id="btnReset">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { AttitudeIndication } from "../scripts/att.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const plainCanvas = document.getElementById('attCanvas');
+            const fdCanvas = document.getElementById('attFdCanvas');
+            const attitude = new AttitudeIndication(plainCanvas);
+            const attitudeWithFd = new AttitudeIndication(fdCanvas, {
+                flightDirectorColor: '#FFD54F',
+            });
+
+            const pitchSlider = document.getElementById('pitchSlider');
+            const rollSlider = document.getElementById('rollSlider');
+            const fdPitchSlider = document.getElementById('fdPitchSlider');
+            const fdRollSlider = document.getElementById('fdRollSlider');
+            const pitchValue = document.getElementById('pitchValue');
+            const rollValue = document.getElementById('rollValue');
+            const fdPitchValue = document.getElementById('fdPitchValue');
+            const fdRollValue = document.getElementById('fdRollValue');
+            const toggleFd = document.getElementById('toggleFd');
+            const colorPresets = document.getElementById('fdColorPresets');
+            const btnCenterFd = document.getElementById('btnCenterFd');
+            const btnReset = document.getElementById('btnReset');
+
+            let showFlightDirector = true;
+            let flightDirectorColor = '#FFD54F';
+
+            function refreshDisplay() {
+                const pitch = parseFloat(pitchSlider.value);
+                const roll = parseFloat(rollSlider.value);
+                const fdPitch = parseFloat(fdPitchSlider.value);
+                const fdRoll = parseFloat(fdRollSlider.value);
+
+                pitchValue.textContent = `${pitch.toFixed(1)}°`;
+                rollValue.textContent = `${roll.toFixed(0)}°`;
+                fdPitchValue.textContent = `${fdPitch.toFixed(1)}°`;
+                fdRollValue.textContent = `${fdRoll.toFixed(0)}°`;
+
+                // 左侧：普通姿态仪
+                attitude.updateDisplay(pitch, roll);
+
+                // 右侧：目标姿态传入飞行指引；不显示时传 null
+                attitudeWithFd.updateDisplay(
+                    pitch,
+                    roll,
+                    showFlightDirector
+                        ? {
+                            targetPitch: fdPitch,
+                            targetRoll: fdRoll,
+                            color: flightDirectorColor,
+                        }
+                        : null
+                );
+            }
+
+            [pitchSlider, rollSlider, fdPitchSlider, fdRollSlider].forEach((slider) => {
+                slider.addEventListener('input', refreshDisplay);
+            });
+
+            toggleFd.addEventListener('click', () => {
+                showFlightDirector = !showFlightDirector;
+                toggleFd.classList.toggle('active', showFlightDirector);
+                toggleFd.textContent = showFlightDirector ? '显示飞行指引' : '隐藏飞行指引';
+                refreshDisplay();
+            });
+
+            colorPresets.addEventListener('click', (event) => {
+                const preset = event.target.closest('.color-preset');
+                if (!preset) return;
+                colorPresets.querySelectorAll('.color-preset').forEach((item) => {
+                    item.classList.remove('active');
+                });
+                preset.classList.add('active');
+                flightDirectorColor = preset.dataset.color;
+                refreshDisplay();
+            });
+
+            btnCenterFd.addEventListener('click', () => {
+                fdPitchSlider.value = pitchSlider.value;
+                fdRollSlider.value = rollSlider.value;
+                refreshDisplay();
+            });
+
+            btnReset.addEventListener('click', () => {
+                pitchSlider.value = 4;
+                rollSlider.value = -8;
+                fdPitchSlider.value = 12;
+                fdRollSlider.value = 10;
+                showFlightDirector = true;
+                flightDirectorColor = '#FFD54F';
+                toggleFd.classList.add('active');
+                toggleFd.textContent = '显示飞行指引';
+                colorPresets.querySelectorAll('.color-preset').forEach((item) => {
+                    item.classList.remove('active');
+                });
+                const amberPreset = colorPresets.querySelector('[data-color="#FFD54F"]');
+                if (amberPreset) amberPreset.classList.add('active');
+                refreshDisplay();
+            });
+
+            refreshDisplay();
+
+            console.log('✈️ 姿态仪已就绪 | Attitude Indicator Ready');
+            console.log('   左侧：普通姿态仪');
+            console.log('   右侧：飞行指引（目标姿态与实际姿态偏差驱动两根十字指引杆）');
+            console.log('   隐藏飞行指引时，右侧仪表与左侧一致');
+        });
+    </script>
+</body>
+</html>
