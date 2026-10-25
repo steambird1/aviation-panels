@@ -13,7 +13,7 @@
     <div id="panels-container" class="main-panel-div"></div>
 
     <script type="module">
-        import {Panel, Display, ButtonSimple, ButtonWithLights, KnobDiscrete, KnobContinuous, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous, KnobInfinite} from "/scripts/panels.js";
+        import {Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, KnobDiscrete, KnobContinuous, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous, KnobInfinite} from "/scripts/panels.js";
         import {AttitudeIndication} from "/scripts/att.js";
         import {AirspeedIndication} from "/scripts/airspeed.js";
         import {AltitudeIndication} from "/scripts/alt.js";
@@ -22,8 +22,9 @@
         (function() {
             
             console.log('空客驾驶舱风格组件库已加载。');
-            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, KnobDiscrete, KnobContinuous, Lever');
+            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, KnobDiscrete, KnobContinuous, KnobInfinite, Lever, LeverContinuous');
             console.log('全局函数: updateDisplay({cmpName, upperLight, lowerLight})');
+            console.log('组件文本标识: labelPosition = top | bottom | left | right；左右侧可加 labelOrientation: "vertical" 竖排');
             console.log('所有组件通过 CockpitComponents 命名空间访问。');
 
             // ==================== 演示代码 ====================
@@ -334,7 +335,8 @@
                     arcStartAngle: 200,
                     arcEndAngle: 340,
                     label: 'BRIGHTNESS',
-                    labelPosition: 'top',
+                    labelPosition: 'right',
+                    labelOrientation: 'vertical',
                     valueDisplayPrecision: 0,
                 });
                 panel2.addComponent(knobCont2, { row: 1, col: 4, rowSpan: 2, colSpan: 2 });
@@ -389,17 +391,67 @@
                     orientation: 'horizontal',
                     slotLength: 120,
                     label: 'PITCH TRIM',
-                    labelPosition: 'top',
+                    labelPosition: 'left',
+                    labelOrientation: 'vertical',
                     valueDisplayPrecision: 1,
                 });
-                panel2.addComponent(leverContinuous2, { row: 4, col: 1, rowSpan: 1, colSpan: 4 });
+                panel2.addComponent(leverContinuous2, { row: 4, col: 3, rowSpan: 1, colSpan: 4 });
                 leverContinuous2.on('change', (data) => {
                     console.log(`配平拨杆 值: ${data.value.toFixed(1)}`);
+                });
+
+                // --- 新增：独立指示灯演示 ---
+                const lightApu = new IndicatorLight('light-apu', {
+                    text: 'APU',
+                    backgroundColor: 'green',
+                    foregroundColor: 'white',
+                    initialBrightness: 90,
+                    label: 'APU AVAIL',
+                    labelPosition: 'top',
+                });
+                panel2.addComponent(lightApu, { row: 5, col: 1, rowSpan: 1, colSpan: 2 });
+
+                const lightFault = new IndicatorLight('light-fault', {
+                    text: 'FAULT',
+                    backgroundColor: 'amber',
+                    foregroundColor: 'white',
+                    initialBrightness: 0,
+                    label: 'ENG FAULT',
+                    labelPosition: 'bottom',
+                });
+                panel2.addComponent(lightFault, { row: 5, col: 3, rowSpan: 1, colSpan: 2 });
+
+                const lightWarn = new IndicatorLight('light-warn', {
+                    text: 'WARN',
+                    backgroundColor: '#e04848',
+                    foregroundColor: 'white',
+                    initialBrightness: 0,
+                    label: 'MASTER WARN',
+                    labelPosition: 'top',
+                });
+                panel2.addComponent(lightWarn, { row: 5, col: 7, rowSpan: 1, colSpan: 2 });
+                lightWarn.on('change', (data) => {
+                    console.log(`指示灯 ${data.cmpName} 亮度: ${data.brightness.toFixed(0)}`);
+                });
+
+                // 用按钮测试所有指示灯：通过 updateDisplay 控制独立指示灯的亮度
+                const btnLampTest = new ButtonSimple('btn-lamp-test', {
+                    text: 'LAMP',
+                    label: 'LAMP TEST',
+                    labelPosition: 'bottom',
+                });
+                panel2.addComponent(btnLampTest, { row: 5, col: 5, rowSpan: 1, colSpan: 2 });
+                let lampTestOn = false;
+                btnLampTest.on('click', () => {
+                    lampTestOn = !lampTestOn;
+                    updateDisplay({ cmpName: 'light-fault', upperLight: lampTestOn ? 90 : 0 });
+                    updateDisplay({ cmpName: 'light-warn', upperLight: lampTestOn ? 95 : 0 });
                 });
 
                 console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');
                 console.log('尝试在控制台运行: updateDisplay({cmpName: "btn-fd", lowerLight: 90})');
                 console.log('或: updateDisplay({cmpName: "btn-master-caution", upperLight: 95, lowerLight: 0})');
+                console.log('指示灯: updateDisplay({cmpName: "light-fault", upperLight: 90})');
             }
 
             // 页面加载完成后运行演示

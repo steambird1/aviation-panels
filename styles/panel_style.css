@@ -122,6 +122,17 @@ body {
     transform: translateY(-50%);
     text-align: left;
 }
+/* 位于左侧/右侧时，可选的竖排文字 */
+.component-label.label-vertical {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    letter-spacing: 0.08em;
+    line-height: 1;
+}
+.component-label.label-left.label-vertical,
+.component-label.label-right.label-vertical {
+    text-align: center;
+}
 
 /* ========== 显示屏 Canvas ========== */
 .display-container {
@@ -284,6 +295,44 @@ body {
     opacity: 1;
 }
 
+/* ========== 独立指示灯 ========== */
+.indicator-light {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 2 / 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    background: #14161b;
+    color: #3c3f48;
+    border: 2px solid var(--border-color);
+    border-radius: 5px;
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: center;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55);
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+    overflow: hidden;
+}
+.indicator-light-text {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.1;
+}
+
 /* ========== 旋钮容器 ========== */
 .knob-container {
     position: relative;
@@ -293,6 +342,7 @@ body {
     cursor: grab;
     border-radius: 50%;
     -webkit-tap-highlight-color: transparent;
+    touch-action: none;
 }
 .knob-container:active {
     cursor: grabbing;

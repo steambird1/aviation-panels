@@ -41,7 +41,159 @@ function getColorVar(colorName) {
         'white': 'var(--color-white)',
         'cyan': 'var(--color-cyan)',
     };
-    return map[colorName] || 'var(--color-white)';
+    if (!colorName) return map.white;
+    // 除内置颜色名外，也允许直接传入任意 CSS 颜色（如 #ff8800、rgba(...)）
+    return map[colorName] || colorName;
+}
+
+function normalizeLabelPosition(position) {
+    return ['top', 'bottom', 'left', 'right'].includes(position) ? position : 'top';
+}
+
+function normalizeLabelOrientation(orientation) {
+    return orientation === 'vertical' ? 'vertical' : 'horizontal';
+}
+
+// 将颜色与暗色背景混合，用于指示灯熄灭时的暗淡底色/文字
+function getDimColor(color, percent, darkColor = '#0b0d11') {
+    return `color-mix(in srgb, ${color} ${clamp(percent, 0, 100)}%, ${darkColor})`;
+}
+
+// ==================== 旋钮拖拽工具 ====================
+function normalizeAngle(angleDeg) {
+    let a = angleDeg % 360;
+    if (a < 0) a += 360;
+    return a;
+}
+
+// 计算两个角度之间的最短差值（-180 ~ 180）
+function shortestAngleDelta(currentAngle, lastAngle) {
+    let diff = normalizeAngle(currentAngle) - normalizeAngle(lastAngle);
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    return diff;
+}
+
+function getPointerAngle(container, event) {
+    const rect = container.getBoundingClientRect();
+    const point = event.touches ? event.touches[0] : event;
+    if (!point) return { angle: 0, distance: 0 };
+
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = point.clientX - cx;
+    const dy = point.clientY - cy;
+    // 0 度在正上方，角度顺时针增加
+    const angle = normalizeAngle(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+    return { angle, distance: Math.hypot(dx, dy) };
+}
+
+/**
+ * 绑定旋钮的旋转拖拽。
+ * 使用相对角度增量（并处理 0/360 环绕），因此指针即使移动到很远的位置，
+ * 只要绕旋钮转动，旋钮就会继续旋转。优先使用 Pointer Events + 指针捕获，
+ * 鼠标拖出组件甚至拖出窗口后依然可以正常操作。
+ *
+ * @param {HTMLElement} container 旋钮容器
+ * @param {{onStart?: Function, onRotate?: Function, onEnd?: Function}} callbacks
+ * @returns {Function} 清理函数
+ */
+function bindRotaryDrag(container, callbacks = {}) {
+    const { onStart, onRotate, onEnd } = callbacks;
+    const deadZone = 6; // 靠近圆心时角度不稳定，暂时忽略
+    let isDragging = false;
+    let lastAngle = null;
+    let activePointerId = null;
+
+    const handleStart = (event) => {
+        if (isDragging) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        if (event.pointerType === 'touch' && event.isPrimary === false) return;
+
+        event.preventDefault();
+        isDragging = true;
+        activePointerId = event.pointerId !== undefined ? event.pointerId : null;
+
+        const { angle, distance } = getPointerAngle(container, event);
+        lastAngle = distance >= deadZone ? angle : null;
+
+        container.style.cursor = 'grabbing';
+        document.body.style.cursor = 'grabbing';
+
+        if (activePointerId !== null && typeof container.setPointerCapture === 'function') {
+            try {
+                container.setPointerCapture(activePointerId);
+            } catch (err) {
+                // 某些浏览器/输入方式下捕获可能失败，不影响 window 上的监听
+            }
+        }
+        if (onStart) onStart(event);
+    };
+
+    const handleMove = (event) => {
+        if (!isDragging) return;
+        if (activePointerId !== null && event.pointerId !== undefined &&
+            event.pointerId !== activePointerId) return;
+
+        if (event.cancelable) event.preventDefault();
+        const { angle, distance } = getPointerAngle(container, event);
+
+        // 指针掠过圆心时不响应，避免角度瞬间跳变
+        if (distance < deadZone) {
+            lastAngle = null;
+            return;
+        }
+        if (lastAngle === null) {
+            lastAngle = angle;
+            return;
+        }
+
+        const delta = shortestAngleDelta(angle, lastAngle);
+        lastAngle = angle;
+        if (Math.abs(delta) > 0.0001 && onRotate) onRotate(delta, event);
+    };
+
+    const handleEnd = (event) => {
+        if (!isDragging) return;
+        if (activePointerId !== null && event.pointerId !== undefined &&
+            event.pointerId !== activePointerId) return;
+
+        isDragging = false;
+        lastAngle = null;
+        activePointerId = null;
+        container.style.cursor = 'grab';
+        document.body.style.cursor = '';
+        if (onEnd) onEnd(event);
+    };
+
+    const listeners = [];
+    const addListener = (target, type, handler, options) => {
+        target.addEventListener(type, handler, options);
+        listeners.push([target, type, handler, options]);
+    };
+
+    if (typeof window !== 'undefined' && 'PointerEvent' in window) {
+        addListener(container, 'pointerdown', handleStart);
+        // move/up 绑定在 window 上：即使指针捕获失败或指针移出组件，拖拽仍然有效
+        addListener(window, 'pointermove', handleMove);
+        addListener(window, 'pointerup', handleEnd);
+        addListener(window, 'pointercancel', handleEnd);
+        addListener(container, 'lostpointercapture', handleEnd);
+    } else {
+        // 旧浏览器回退到鼠标/触摸事件
+        addListener(container, 'mousedown', handleStart);
+        addListener(container, 'touchstart', handleStart, { passive: false });
+        addListener(window, 'mousemove', handleMove);
+        addListener(window, 'touchmove', handleMove, { passive: false });
+        addListener(window, 'mouseup', handleEnd);
+        addListener(window, 'touchend', handleEnd);
+    }
+
+    return () => {
+        listeners.forEach(([target, type, handler, options]) => {
+            target.removeEventListener(type, handler, options);
+        });
+    };
 }
 
 // ==================== 面板类 ====================
@@ -113,7 +265,9 @@ class BaseComponent {
     constructor(cmpName, options = {}) {
         this.cmpName = cmpName || ('cmp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
         this.labelText = options.label || '';
-        this.labelPosition = options.labelPosition || 'top'; // top, bottom, left, right
+        this.labelPosition = normalizeLabelPosition(options.labelPosition || 'top'); // top, bottom, left, right
+        // left / right 时文字是否竖排
+        this.labelOrientation = normalizeLabelOrientation(options.labelOrientation);
         this.gridRow = 1;
         this.gridCol = 1;
         this.gridRowSpan = 1;
@@ -132,13 +286,57 @@ class BaseComponent {
         this.wrapperDiv.className = 'component-wrapper';
         this.wrapperDiv.setAttribute('data-cmp-name', this.cmpName);
 
-        // 描述性标签
-        if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
+        this._renderLabel();
+    }
+
+    // 创建/更新描述性标签（位置、竖排方向可配置）
+    _renderLabel() {
+        if (!this.labelText) {
+            if (this.labelDiv && this.labelDiv.parentNode) {
+                this.labelDiv.parentNode.removeChild(this.labelDiv);
+            }
+            this.labelDiv = null;
+            return;
         }
+
+        if (!this.labelDiv) {
+            this.labelDiv = document.createElement('div');
+            this.wrapperDiv.insertBefore(this.labelDiv, this.wrapperDiv.firstChild);
+        }
+        this.labelDiv.textContent = this.labelText;
+        this._applyLabelStyle();
+    }
+
+    _applyLabelStyle() {
+        if (!this.labelDiv) return;
+        const position = normalizeLabelPosition(this.labelPosition);
+        const isVertical = this.labelOrientation === 'vertical' &&
+            (position === 'left' || position === 'right');
+        this.labelDiv.className = 'component-label label-' + position +
+            (isVertical ? ' label-vertical' : '');
+        this.labelDiv.setAttribute('data-label-position', position);
+        this.labelDiv.setAttribute('data-label-orientation', isVertical ? 'vertical' : 'horizontal');
+    }
+
+    setLabel(text) {
+        this.labelText = text || '';
+        this._renderLabel();
+        return this;
+    }
+
+    setLabelPosition(position, orientation) {
+        this.labelPosition = normalizeLabelPosition(position);
+        if (orientation !== undefined) {
+            this.labelOrientation = normalizeLabelOrientation(orientation);
+        }
+        this._applyLabelStyle();
+        return this;
+    }
+
+    setLabelOrientation(orientation) {
+        this.labelOrientation = normalizeLabelOrientation(orientation);
+        this._applyLabelStyle();
+        return this;
     }
 
     setGridPosition(row, col, rowSpan, colSpan) {
@@ -196,12 +394,14 @@ export class Display extends BaseComponent {
             width = 400,
             height = 250,
             label = '',
-            labelPosition = 'top'
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
         } = options;
         this.canvasWidth = width;
         this.canvasHeight = height;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
 
         // 重建wrapper以包含canvas
         this._buildDisplayWrapper();
@@ -218,12 +418,8 @@ export class Display extends BaseComponent {
         this.wrapperDiv.style.overflow = 'visible';
 
         // 描述性标签
-        if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this.labelDiv = null;
+        this._renderLabel();
 
         // 显示屏容器
         const displayContainer = document.createElement('div');
@@ -282,26 +478,20 @@ export class ButtonSimple extends BaseComponent {
         const {
             text = '',
             label = '',
-            labelPosition = 'top'
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
         } = options;
         this.buttonText = text;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
 
         this._buildButton();
     }
 
     _buildButton() {
         // 更新wrapper
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         this.buttonEl = document.createElement('button');
         this.buttonEl.className = 'btn-simple';
@@ -350,6 +540,7 @@ export class ButtonWithLights extends BaseComponent {
             lowerLightText = '',
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
             initialUpperBrightness = 0,
             initialLowerBrightness = 0,
         } = options;
@@ -359,7 +550,8 @@ export class ButtonWithLights extends BaseComponent {
         this.upperLightText = upperLightText;
         this.lowerLightText = lowerLightText;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this._upperBrightness = initialUpperBrightness;
         this._lowerBrightness = initialLowerBrightness;
 
@@ -367,15 +559,7 @@ export class ButtonWithLights extends BaseComponent {
     }
 
     _buildButtonWithLights() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         // 清除旧内容
         const oldBtn = this.wrapperDiv.querySelector('.btn-with-lights');
@@ -493,6 +677,146 @@ export class ButtonWithLights extends BaseComponent {
     getLowerBrightness() { return this._lowerBrightness; }
 }
 
+// ==================== 独立指示灯 ====================
+export class IndicatorLight extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            text = '',
+            backgroundColor,
+            foregroundColor,
+            bgColor,
+            fgColor,
+            lightColor,
+            textColor,
+            initialBrightness = 0,
+            brightness,
+            lit,
+            label = '',
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
+        } = options;
+
+        this.lightText = text;
+        // 背景色 = 灯点亮时的发光颜色；前景色 = 文字颜色
+        this.backgroundColor = backgroundColor || bgColor || lightColor || 'green';
+        this.foregroundColor = foregroundColor || fgColor || textColor || 'white';
+        this.labelText = label;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
+
+        let initial = brightness !== undefined ? brightness : initialBrightness;
+        if (lit !== undefined) initial = lit ? 100 : 0;
+        this._brightness = clamp(initial, 0, 100);
+
+        this._buildIndicator();
+    }
+
+    _buildIndicator() {
+        this._renderLabel();
+
+        const oldLight = this.wrapperDiv.querySelector('.indicator-light');
+        if (oldLight) oldLight.remove();
+
+        this.indicatorEl = document.createElement('div');
+        this.indicatorEl.className = 'indicator-light';
+        this.indicatorEl.setAttribute('role', 'status');
+        this.indicatorEl.setAttribute('aria-label', this.cmpName);
+
+        this.indicatorTextEl = document.createElement('span');
+        this.indicatorTextEl.className = 'indicator-light-text';
+        this.indicatorTextEl.textContent = this.lightText;
+
+        this.indicatorEl.appendChild(this.indicatorTextEl);
+        this.wrapperDiv.appendChild(this.indicatorEl);
+
+        this._applyBrightness();
+    }
+
+    _applyBrightness() {
+        if (!this.indicatorEl) return;
+
+        const b = this._brightness;
+        const bgColor = getColorVar(this.backgroundColor);
+        const fgColor = getColorVar(this.foregroundColor);
+        const el = this.indicatorEl;
+
+        if (b <= 0) {
+            // 熄灭状态：保留暗淡的底色和暗淡的文字颜色
+            el.classList.remove('lit');
+            el.style.background = getDimColor(bgColor, 18);
+            el.style.color = getDimColor(fgColor, 32);
+            el.style.borderColor = getDimColor(bgColor, 34);
+            el.style.boxShadow = 'inset 0 2px 6px rgba(0, 0, 0, 0.55)';
+            el.style.textShadow = 'none';
+            return;
+        }
+
+        el.classList.add('lit');
+        const intensity = b / 100;
+        const glowSize = 4 + intensity * 10;
+        // 亮度越低，底色越接近熄灭时的暗色
+        el.style.background = getDimColor(bgColor, 30 + intensity * 70);
+        el.style.color = fgColor;
+        el.style.borderColor = bgColor;
+        el.style.boxShadow =
+            `0 0 ${glowSize}px ${bgColor}, inset 0 0 ${glowSize * 0.6}px ${bgColor}`;
+        el.style.textShadow = `0 0 ${3 + intensity * 6}px ${fgColor}`;
+    }
+
+    setBrightness(brightness) {
+        const newBrightness = clamp(brightness, 0, 100);
+        if (Math.abs(newBrightness - this._brightness) > 0.0001) {
+            this._brightness = newBrightness;
+            this._applyBrightness();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                brightness: this._brightness,
+                value: this._brightness,
+                lit: this._brightness > 0,
+            });
+        }
+        return this;
+    }
+
+    getBrightness() { return this._brightness; }
+
+    isLit() { return this._brightness > 0; }
+
+    setLit(on) {
+        return this.setBrightness(on ? 100 : 0);
+    }
+
+    setText(text) {
+        this.lightText = text;
+        if (this.indicatorTextEl) this.indicatorTextEl.textContent = text;
+        return this;
+    }
+
+    setBackgroundColor(color) {
+        this.backgroundColor = color || 'green';
+        this._applyBrightness();
+        return this;
+    }
+
+    setForegroundColor(color) {
+        this.foregroundColor = color || 'white';
+        this._applyBrightness();
+        return this;
+    }
+
+    // 兼容 updateDisplay 接口：使用 upperLight 作为指示灯亮度
+    updateLights(upperLight) {
+        if (upperLight !== undefined) {
+            this.setBrightness(upperLight);
+        }
+    }
+
+    getLightElement() {
+        return this.indicatorEl;
+    }
+}
+
 // ==================== 旋钮 - 类型a (离散档位) ====================
 export class KnobDiscrete extends BaseComponent {
     constructor(cmpName, options = {}) {
@@ -505,6 +829,7 @@ export class KnobDiscrete extends BaseComponent {
             arcEndAngle = 330,
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
         } = options;
         this.positions = positions; // 档位名称数组
         this.currentPosition = clamp(initialPosition, 0, positions.length - 1);
@@ -512,9 +837,10 @@ export class KnobDiscrete extends BaseComponent {
         this.arcStartAngle = arcStartAngle; // 起始角度（度，0=顶部，顺时针）
         this.arcEndAngle = arcEndAngle; // 结束角度
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this._isDragging = false;
-        this._dragStartAngle = 0;
+        this._dragAccumAngle = 0;
         this._dragStartPosition = 0;
 
         this._buildKnob();
@@ -522,15 +848,7 @@ export class KnobDiscrete extends BaseComponent {
     }
 
     _buildKnob() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         const oldKnob = this.wrapperDiv.querySelector('.knob-container');
         if (oldKnob) oldKnob.remove();
@@ -635,89 +953,69 @@ export class KnobDiscrete extends BaseComponent {
     _bindKnobEvents() {
         if (!this.knobContainer) return;
 
-        const getAngleFromEvent = (e) => {
-            const rect = this.knobContainer.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const dx = clientX - cx;
-            const dy = clientY - cy;
-            let angleRad = Math.atan2(dy, dx);
-            let angleDeg = angleRad * 180 / Math.PI + 90;
-            if (angleDeg < 0) angleDeg += 360;
-            return angleDeg;
-        };
-
-        const onPointerDown = (e) => {
-            e.preventDefault();
-            this._isDragging = true;
-            this._dragStartAngle = getAngleFromEvent(e);
-            this._dragStartPosition = this.currentPosition;
-            this.knobContainer.style.cursor = 'grabbing';
-            document.body.style.cursor = 'grabbing';
-        };
-
-        const onPointerMove = (e) => {
-            if (!this._isDragging) return;
-            e.preventDefault();
-            const currentAngle = getAngleFromEvent(e);
-            let angleDiff = currentAngle - this._dragStartAngle;
-            if (angleDiff > 180) angleDiff -= 360;
-            if (angleDiff < -180) angleDiff += 360;
-            const totalRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
-            const numPositions = this.positions.length;
-            const anglePerStep = numPositions > 1 ? totalRange / (numPositions - 1) : totalRange;
-            const stepChange = Math.round(angleDiff / anglePerStep);
-            const newPos = clamp(this._dragStartPosition + stepChange, 0, numPositions - 1);
-            if (newPos !== this.currentPosition) {
-                this.currentPosition = newPos;
-                this._updateKnobRotation();
-                this._emit('change', {
-                    cmpName: this.cmpName,
-                    position: this.currentPosition,
-                    positionName: this.positions[this.currentPosition],
-                });
-            }
-        };
-
-        const onPointerUp = (e) => {
-            if (!this._isDragging) return;
-            this._isDragging = false;
-            this.knobContainer.style.cursor = 'grab';
-            document.body.style.cursor = '';
-        };
-
-        this.knobContainer.addEventListener('mousedown', onPointerDown);
-        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
-        window.addEventListener('mousemove', onPointerMove);
-        window.addEventListener('touchmove', onPointerMove, { passive: false });
-        window.addEventListener('mouseup', onPointerUp);
-        window.addEventListener('touchend', onPointerUp);
-
-        // 滚轮切换档位
-        this.knobContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const numPositions = this.positions.length;
-            if (e.deltaY > 0) {
-                this.currentPosition = clamp(this.currentPosition + 1, 0, numPositions - 1);
-            } else {
-                this.currentPosition = clamp(this.currentPosition - 1, 0, numPositions - 1);
-            }
-            this._updateKnobRotation();
+        const emitChange = () => {
             this._emit('change', {
                 cmpName: this.cmpName,
                 position: this.currentPosition,
                 positionName: this.positions[this.currentPosition],
             });
-        }, { passive: false });
+        };
+
+        // 滚轮切换档位
+        const onWheel = (e) => {
+            e.preventDefault();
+            const numPositions = this.positions.length;
+            const step = e.deltaY > 0 ? 1 : -1;
+            const newPos = clamp(this.currentPosition + step, 0, numPositions - 1);
+            if (newPos !== this.currentPosition) {
+                this.currentPosition = newPos;
+                this._updateKnobRotation();
+                emitChange();
+            }
+        };
+        this.knobContainer.addEventListener('wheel', onWheel, { passive: false });
+
+        // 相对角度拖拽：指针离开旋钮较远时仍可继续旋转
+        const removeDrag = bindRotaryDrag(this.knobContainer, {
+            onStart: () => {
+                this._isDragging = true;
+                this._dragStartPosition = this.currentPosition;
+                this._dragAccumAngle = 0;
+            },
+            onRotate: (deltaDeg) => {
+                const numPositions = this.positions.length;
+                if (numPositions <= 1) return;
+                const totalRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
+                const anglePerStep = totalRange / (numPositions - 1);
+                if (anglePerStep <= 0) return;
+
+                this._dragAccumAngle += deltaDeg;
+                // 限制累计角度，到达档位两端后反向拖动可以立即响应
+                const minAccum = -this._dragStartPosition * anglePerStep;
+                const maxAccum = (numPositions - 1 - this._dragStartPosition) * anglePerStep;
+                this._dragAccumAngle = clamp(this._dragAccumAngle, minAccum, maxAccum);
+
+                const newPos = clamp(
+                    this._dragStartPosition +
+                        Math.round(this._dragAccumAngle / anglePerStep),
+                    0,
+                    numPositions - 1
+                );
+                if (newPos !== this.currentPosition) {
+                    this.currentPosition = newPos;
+                    this._updateKnobRotation();
+                    emitChange();
+                }
+            },
+            onEnd: () => {
+                this._isDragging = false;
+            },
+        });
 
         // 存储清理引用
         this._knobCleanup = () => {
-            window.removeEventListener('mousemove', onPointerMove);
-            window.removeEventListener('touchmove', onPointerMove);
-            window.removeEventListener('mouseup', onPointerUp);
-            window.removeEventListener('touchend', onPointerUp);
+            removeDrag();
+            this.knobContainer.removeEventListener('wheel', onWheel);
         };
     }
 
@@ -759,6 +1057,7 @@ export class KnobContinuous extends BaseComponent {
             arcEndAngle = 330,
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
             valueDisplayPrecision = 0,
         } = options;
         this.minValue = minValue;
@@ -768,10 +1067,11 @@ export class KnobContinuous extends BaseComponent {
         this.arcStartAngle = arcStartAngle;
         this.arcEndAngle = arcEndAngle;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this.valueDisplayPrecision = valueDisplayPrecision;
         this._isDragging = false;
-        this._dragStartAngle = 0;
+        this._dragAccumAngle = 0;
         this._dragStartValue = 0;
 
         this._buildKnob();
@@ -779,15 +1079,7 @@ export class KnobContinuous extends BaseComponent {
     }
 
     _buildKnob() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         const oldKnob = this.wrapperDiv.querySelector('.knob-container');
         if (oldKnob) oldKnob.remove();
@@ -887,99 +1179,72 @@ export class KnobContinuous extends BaseComponent {
     _bindKnobEvents() {
         if (!this.knobContainer) return;
 
-        const getAngleFromEvent = (e) => {
-            const rect = this.knobContainer.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const dx = clientX - cx;
-            const dy = clientY - cy;
-            let angleRad = Math.atan2(dy, dx);
-            let angleDeg = angleRad * 180 / Math.PI + 90;
-            if (angleDeg < 0) angleDeg += 360;
-            return angleDeg;
-        };
-
-        const clampAngleToRange = (angleDeg) => {
-            const start = this.arcStartAngle;
-            const end = this.arcEndAngle;
-            // 处理角度环绕
-            let a = angleDeg;
-            const mid = (start + end) / 2;
-            while (a - mid > 180) a -= 360;
-            while (a - mid < -180) a += 360;
-            return clamp(a, Math.min(start, end), Math.max(start, end));
-        };
-
-        const onPointerDown = (e) => {
-            e.preventDefault();
-            this._isDragging = true;
-            const rawAngle = getAngleFromEvent(e);
-            this._dragStartAngle = clampAngleToRange(rawAngle);
-            this._dragStartValue = this.currentValue;
-            this.knobContainer.style.cursor = 'grabbing';
-            document.body.style.cursor = 'grabbing';
-        };
-
-        const onPointerMove = (e) => {
-            if (!this._isDragging) return;
-            e.preventDefault();
-            const rawAngle = getAngleFromEvent(e);
-            const clampedAngle = clampAngleToRange(rawAngle);
-            const angleDiff = clampedAngle - this._dragStartAngle;
-            const totalAngleRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
-            const valueRange = this.maxValue - this.minValue;
-            const valueChange = (angleDiff / totalAngleRange) * valueRange;
-            const newValue = clamp(this._dragStartValue + valueChange, this.minValue, this
-                .maxValue);
-            if (Math.abs(newValue - this.currentValue) > 0.0001) {
-                this.currentValue = newValue;
-                this._updateKnobRotation();
-                this._emit('change', {
-                    cmpName: this.cmpName,
-                    value: this.currentValue,
-                });
-            }
-        };
-
-        const onPointerUp = () => {
-            if (!this._isDragging) return;
-            this._isDragging = false;
-            this.knobContainer.style.cursor = 'grab';
-            document.body.style.cursor = '';
-        };
-
-        this.knobContainer.addEventListener('mousedown', onPointerDown);
-        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
-        window.addEventListener('mousemove', onPointerMove);
-        window.addEventListener('touchmove', onPointerMove, { passive: false });
-        window.addEventListener('mouseup', onPointerUp);
-        window.addEventListener('touchend', onPointerUp);
-
-        this.knobContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const valueRange = this.maxValue - this.minValue;
-            const step = valueRange / 100;
-            if (e.deltaY > 0) {
-                this.currentValue = clamp(this.currentValue + step, this.minValue, this
-                    .maxValue);
-            } else {
-                this.currentValue = clamp(this.currentValue - step, this.minValue, this
-                    .maxValue);
-            }
-            this._updateKnobRotation();
+        const emitChange = () => {
             this._emit('change', {
                 cmpName: this.cmpName,
                 value: this.currentValue,
             });
-        }, { passive: false });
+        };
+
+        const onWheel = (e) => {
+            e.preventDefault();
+            const valueRange = this.maxValue - this.minValue;
+            if (valueRange <= 0) return;
+            const step = valueRange / 100;
+            const newValue = clamp(
+                this.currentValue + (e.deltaY > 0 ? step : -step),
+                this.minValue,
+                this.maxValue
+            );
+            if (Math.abs(newValue - this.currentValue) > 0.0001) {
+                this.currentValue = newValue;
+                this._updateKnobRotation();
+                emitChange();
+            }
+        };
+        this.knobContainer.addEventListener('wheel', onWheel, { passive: false });
+
+        // 相对角度拖拽：不再把指针角度限制在旋钮刻度范围内，
+        // 因此指针移到远处甚至绕过多圈时依然可以连续调节。
+        const removeDrag = bindRotaryDrag(this.knobContainer, {
+            onStart: () => {
+                this._isDragging = true;
+                this._dragStartValue = this.currentValue;
+                this._dragAccumAngle = 0;
+            },
+            onRotate: (deltaDeg) => {
+                const totalAngleRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
+                const valueRange = this.maxValue - this.minValue;
+                if (totalAngleRange <= 0 || valueRange <= 0) return;
+
+                const valuePerDegree = valueRange / totalAngleRange;
+                const minAccum = (this.minValue - this._dragStartValue) / valuePerDegree;
+                const maxAccum = (this.maxValue - this._dragStartValue) / valuePerDegree;
+
+                this._dragAccumAngle = clamp(
+                    this._dragAccumAngle + deltaDeg,
+                    minAccum,
+                    maxAccum
+                );
+                const newValue = clamp(
+                    this._dragStartValue + this._dragAccumAngle * valuePerDegree,
+                    this.minValue,
+                    this.maxValue
+                );
+                if (Math.abs(newValue - this.currentValue) > 0.0001) {
+                    this.currentValue = newValue;
+                    this._updateKnobRotation();
+                    emitChange();
+                }
+            },
+            onEnd: () => {
+                this._isDragging = false;
+            },
+        });
 
         this._knobCleanup = () => {
-            window.removeEventListener('mousemove', onPointerMove);
-            window.removeEventListener('touchmove', onPointerMove);
-            window.removeEventListener('mouseup', onPointerUp);
-            window.removeEventListener('touchend', onPointerUp);
+            removeDrag();
+            this.knobContainer.removeEventListener('wheel', onWheel);
         };
     }
 
@@ -1016,13 +1281,15 @@ export class Lever extends BaseComponent {
             slotLength = 100,
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
         } = options;
         this.positions = positions;
         this.currentPosition = clamp(initialPosition, 0, positions.length - 1);
         this.orientation = orientation; // 'vertical' 或 'horizontal'
         this.slotLength = slotLength;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this._isDragging = false;
 
         this._buildLever();
@@ -1030,15 +1297,7 @@ export class Lever extends BaseComponent {
     }
 
     _buildLever() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         const oldLever = this.wrapperDiv.querySelector('.lever-container');
         if (oldLever) oldLever.remove();
@@ -1271,6 +1530,7 @@ export class LeverContinuous extends BaseComponent {
             slotLength = 100,
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
             valueDisplayPrecision = 0,
         } = options;
         this.minValue = minValue;
@@ -1279,7 +1539,8 @@ export class LeverContinuous extends BaseComponent {
         this.orientation = orientation;
         this.slotLength = slotLength;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this.valueDisplayPrecision = valueDisplayPrecision;
         this._isDragging = false;
 
@@ -1288,15 +1549,7 @@ export class LeverContinuous extends BaseComponent {
     }
 
     _buildLever() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         const oldLever = this.wrapperDiv.querySelector('.lever-container');
         if (oldLever) oldLever.remove();
@@ -1521,31 +1774,24 @@ export class KnobInfinite extends BaseComponent {
             diameter = 50,
             label = '',
             labelPosition = 'top',
+            labelOrientation = 'horizontal',
             valueDisplayPrecision = 0,
         } = options;
         this.currentValue = initialValue;
         this.valuePerRevolution = valuePerRevolution;
         this.diameter = diameter;
         this.labelText = label;
-        this.labelPosition = labelPosition;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
         this.valueDisplayPrecision = valueDisplayPrecision;
         this._isDragging = false;
-        this._lastAngle = null; // 上次记录的鼠标角度（度）
 
         this._buildKnob();
         this._updateKnobRotation();
     }
 
     _buildKnob() {
-        if (this.labelDiv) {
-            this.labelDiv.textContent = this.labelText;
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-        } else if (this.labelText) {
-            this.labelDiv = document.createElement('div');
-            this.labelDiv.className = 'component-label label-' + this.labelPosition;
-            this.labelDiv.textContent = this.labelText;
-            this.wrapperDiv.appendChild(this.labelDiv);
-        }
+        this._renderLabel();
 
         const oldKnob = this.wrapperDiv.querySelector('.knob-container');
         if (oldKnob) oldKnob.remove();
@@ -1614,86 +1860,43 @@ export class KnobInfinite extends BaseComponent {
     _bindKnobEvents() {
         if (!this.knobContainer) return;
 
-        const getAngleFromEvent = (e) => {
-            const rect = this.knobContainer.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const dx = clientX - cx;
-            const dy = clientY - cy;
-            let angleRad = Math.atan2(dy, dx);
-            let angleDeg = angleRad * 180 / Math.PI + 90;
-            if (angleDeg < 0) angleDeg += 360;
-            return angleDeg;
+        const emitChange = () => {
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
         };
-
-        // 计算最短角度差（-180 ~ 180）
-        const angleDiff = (current, last) => {
-            let diff = current - last;
-            if (diff > 180) diff -= 360;
-            if (diff < -180) diff += 360;
-            return diff;
-        };
-
-        const onPointerDown = (e) => {
-            e.preventDefault();
-            this._isDragging = true;
-            this._lastAngle = getAngleFromEvent(e);
-            this.knobContainer.style.cursor = 'grabbing';
-            document.body.style.cursor = 'grabbing';
-        };
-
-        const onPointerMove = (e) => {
-            if (!this._isDragging || this._lastAngle === null) return;
-            e.preventDefault();
-            const currentAngle = getAngleFromEvent(e);
-            const deltaDeg = angleDiff(currentAngle, this._lastAngle);
-            if (Math.abs(deltaDeg) > 0.001) {
-                const deltaValue = (deltaDeg / 360) * this.valuePerRevolution;
-                this.currentValue += deltaValue;
-                this._updateKnobRotation();
-                this._emit('change', {
-                    cmpName: this.cmpName,
-                    value: this.currentValue,
-                });
-            }
-            this._lastAngle = currentAngle;
-        };
-
-        const onPointerUp = () => {
-            if (!this._isDragging) return;
-            this._isDragging = false;
-            this._lastAngle = null;
-            this.knobContainer.style.cursor = 'grab';
-            document.body.style.cursor = '';
-        };
-
-        this.knobContainer.addEventListener('mousedown', onPointerDown);
-        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
-        window.addEventListener('mousemove', onPointerMove);
-        window.addEventListener('touchmove', onPointerMove, { passive: false });
-        window.addEventListener('mouseup', onPointerUp);
-        window.addEventListener('touchend', onPointerUp);
 
         // 滚轮支持
-        this.knobContainer.addEventListener('wheel', (e) => {
+        const onWheel = (e) => {
             e.preventDefault();
             const step = this.valuePerRevolution / 360; // 每度对应值
             const delta = e.deltaY > 0 ? -step * 15 : step * 15; // 一次滚轮约15度
             this.currentValue += delta;
             this._updateKnobRotation();
-            this._emit('change', {
-                cmpName: this.cmpName,
-                value: this.currentValue,
-            });
-        }, { passive: false });
+            emitChange();
+        };
+        this.knobContainer.addEventListener('wheel', onWheel, { passive: false });
+
+        // 无限旋钮：累计相对角度增量，指针离得再远也能继续旋转
+        const removeDrag = bindRotaryDrag(this.knobContainer, {
+            onStart: () => {
+                this._isDragging = true;
+            },
+            onRotate: (deltaDeg) => {
+                const deltaValue = (deltaDeg / 360) * this.valuePerRevolution;
+                this.currentValue += deltaValue;
+                this._updateKnobRotation();
+                emitChange();
+            },
+            onEnd: () => {
+                this._isDragging = false;
+            },
+        });
 
         this._knobCleanup = () => {
-            window.removeEventListener('mousemove', onPointerMove);
-            window.removeEventListener('touchmove', onPointerMove);
-            window.removeEventListener('mouseup', onPointerUp);
-            window.removeEventListener('touchend', onPointerUp);
+            removeDrag();
+            this.knobContainer.removeEventListener('wheel', onWheel);
         };
     }
 
