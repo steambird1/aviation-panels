@@ -1,0 +1,68 @@
+:root {
+    --bg: #1a1a2e;
+    --panel-bg: #16213e;
+    --text: #e0e0e0;
+    --accent: #4da6ff;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    flex-direction: column;
+    gap: 24px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+div.main-panel-div {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 30px !important;
+    align-items: flex-start !important;
+}
+
+canvas.altitude {
+    display: block;
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 4px #3a3a4a,
+        0 0 0 8px #2a2a35,
+        0 0 0 10px #1a1a25,
+        0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+canvas.airspeed {
+    border-radius: 50%;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background: #0d0d18;
+    display: block;
+}
+
+canvas.joystick {
+    padding: 12px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	display: block;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #fafaf8;
+}
+
+canvas.active {
+    cursor: crosshair;
+}

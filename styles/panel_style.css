@@ -1,0 +1,504 @@
+
+:root {
+    --bg-panel: #1a1d23;
+    --bg-component: #2a2d35;
+    --bg-button: #3a3d47;
+    --bg-button-hover: #4a4d58;
+    --bg-button-active: #555861;
+    --bg-knob: #383b44;
+    --bg-knob-inner: #2c2f38;
+    --border-color: #5a5d67;
+    --border-light: #6a6d78;
+    --text-primary: #e0e2e8;
+    --text-secondary: #b0b4be;
+    --text-label: #9ca0aa;
+    --color-amber: #e8a830;
+    --color-green: #40c860;
+    --color-blue: #5098e0;
+    --color-red: #e04848;
+    --color-white: #f0f2f6;
+    --color-cyan: #40c8c8;
+    --font-main: 'Bahnschrift', 'Segoe UI', 'Arial', sans-serif;
+    --shadow-glow-green: 0 0 8px rgba(64, 200, 96, 0.7);
+    --shadow-glow-amber: 0 0 8px rgba(232, 168, 48, 0.7);
+    --shadow-glow-blue: 0 0 8px rgba(80, 152, 224, 0.7);
+    --shadow-glow-red: 0 0 8px rgba(224, 72, 72, 0.7);
+    --shadow-glow-white: 0 0 8px rgba(240, 242, 246, 0.7);
+    --shadow-glow-cyan: 0 0 8px rgba(64, 200, 200, 0.7);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: #121418;
+    font-family: var(--font-main);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    padding: 30px;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ========== 面板 ========== */
+.cockpit-panel {
+    background: var(--bg-panel);
+    border: 2px solid #3a3d46;
+    border-radius: 8px;
+    padding: 16px;
+    display: grid;
+    gap: 8px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        0 4px 20px rgba(0, 0, 0, 0.5);
+    position: relative;
+}
+
+.cockpit-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 8px;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    z-index: 1;
+}
+
+/* ========== 组件容器 ========== */
+.component-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    min-width: 0;
+    min-height: 0;
+}
+
+.component-label {
+    position: absolute;
+    font-family: var(--font-main);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-label);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+    text-align: center;
+    line-height: 1.1;
+}
+.component-label.label-top {
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+.component-label.label-bottom {
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+.component-label.label-left {
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: right;
+}
+.component-label.label-right {
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: left;
+}
+
+/* ========== 显示屏 Canvas ========== */
+.display-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0c10;
+    border: 2px solid #3a3d46;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
+}
+.display-container canvas {
+    display: block;
+    image-rendering: auto;
+}
+
+/* ========== 按钮 - 类型a (仅按键) ========== */
+.btn-simple {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-button);
+    border: 2px solid var(--border-color);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: var(--font-main);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.03em;
+    transition: all 0.08s ease;
+    position: relative;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: 2 / 1;
+}
+.btn-simple:hover {
+    background: var(--bg-button-hover);
+    border-color: var(--border-light);
+    box-shadow:
+        0 3px 8px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.btn-simple:active {
+    background: var(--bg-button-active);
+    border-color: #7a7d88;
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    transform: translateY(1px);
+    transition: all 0.03s ease;
+}
+.btn-simple:focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+}
+
+/* ========== 按钮 - 类型b (带指示灯) ========== */
+.btn-with-lights {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: 2 / 1;
+}
+.btn-with-lights .btn-body {
+    flex: 1;
+    width: 100%;
+    background: var(--bg-button);
+    border: 2px solid var(--border-color);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.03em;
+    transition: all 0.08s ease;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+}
+.btn-with-lights .btn-body:hover {
+    background: var(--bg-button-hover);
+    border-color: var(--border-light);
+}
+.btn-with-lights .btn-body:active {
+    background: var(--bg-button-active);
+    border-color: #7a7d88;
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    transform: translateY(1px);
+    transition: all 0.03s ease;
+}
+/* 上方指示灯 - 无外侧框 */
+.btn-with-lights .light-upper {
+    font-family: var(--font-main);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1;
+    min-height: 10px;
+    transition: all 0.15s ease;
+    opacity: 0;
+    text-shadow: none;
+    pointer-events: none;
+    z-index: 3;
+    position: relative;
+}
+.btn-with-lights .light-upper.lit {
+    opacity: 1;
+}
+/* 下方指示灯 - 有外侧框 */
+.btn-with-lights .light-lower {
+    font-family: var(--font-main);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 2px 8px;
+    border: 1.5px solid;
+    border-radius: 3px;
+    line-height: 1;
+    min-width: 20px;
+    min-height: 10px;
+    transition: all 0.15s ease;
+    opacity: 0;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 3;
+    position: relative;
+    background: rgba(0, 0, 0, 0.5);
+}
+.btn-with-lights .light-lower.lit {
+    opacity: 1;
+}
+
+/* ========== 旋钮容器 ========== */
+.knob-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    border-radius: 50%;
+    -webkit-tap-highlight-color: transparent;
+}
+.knob-container:active {
+    cursor: grabbing;
+}
+.knob-outer {
+    position: relative;
+    border-radius: 50%;
+    background: var(--bg-knob);
+    border: 2px solid var(--border-color);
+    box-shadow:
+        0 3px 8px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+}
+.knob-container:hover .knob-outer {
+    border-color: var(--border-light);
+}
+.knob-inner {
+    border-radius: 50%;
+    background: var(--bg-knob-inner);
+    border: 1.5px solid #4a4d57;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.knob-indicator {
+    position: absolute;
+    width: 2.5px;
+    background: #e8eaf0;
+    border-radius: 1.5px;
+    transform-origin: bottom center;
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+}
+.knob-notch {
+    position: absolute;
+    width: 1.5px;
+    background: #7a7d88;
+    border-radius: 1px;
+    pointer-events: none;
+    transform-origin: bottom center;
+    opacity: 0.6;
+}
+/* 旋钮档位标签 */
+.knob-tick-label {
+    position: absolute;
+    font-family: var(--font-main);
+    font-size: 8px;
+    font-weight: 500;
+    color: #9ca0aa;
+    pointer-events: none;
+    white-space: nowrap;
+    text-align: center;
+    letter-spacing: 0.03em;
+    transform: translate(-50%, -50%);
+    transition: color 0.2s;
+}
+.knob-tick-label.active {
+    color: #e0e2e8;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+
+/* ========== 拨杆容器 ========== */
+.lever-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.lever-slot {
+    position: relative;
+    background: #1a1d22;
+    border: 2px solid #3a3d46;
+    border-radius: 6px;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    overflow: visible;
+}
+.lever-slot.vertical {
+    width: 22px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.lever-slot.horizontal {
+    height: 22px;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+.lever-handle {
+    position: absolute;
+    background: #5a5d68;
+    border: 2px solid #7a7d88;
+    border-radius: 4px;
+    cursor: grab;
+    box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: box-shadow 0.1s;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.lever-handle:active {
+    cursor: grabbing;
+    box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.5),
+        inset 0 2px 3px rgba(0, 0, 0, 0.3);
+    border-color: #9a9da8;
+}
+.lever-handle::after {
+    content: '';
+    position: absolute;
+    background: #8a8d96;
+    border-radius: 1px;
+}
+.lever-slot.vertical .lever-handle {
+    width: 28px;
+    height: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.lever-slot.vertical .lever-handle::after {
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
+}
+.lever-slot.horizontal .lever-handle {
+    height: 28px;
+    width: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+.lever-slot.horizontal .lever-handle::after {
+    height: 14px;
+    width: 2px;
+    border-radius: 1px;
+}
+.lever-tick-label {
+    position: absolute;
+    font-family: var(--font-main);
+    font-size: 8px;
+    font-weight: 500;
+    color: #9ca0aa;
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+    transition: color 0.2s;
+}
+.lever-tick-label.active {
+    color: #e0e2e8;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+.lever-slot.vertical .lever-tick-label {
+    left: calc(100% + 10px);
+    transform: translateY(-50%);
+    text-align: left;
+}
+.lever-slot.horizontal .lever-tick-label {
+    top: calc(100% + 8px);
+    transform: translateX(-50%);
+    text-align: center;
+}
+/* 槽道刻度标记 */
+.lever-tick-mark {
+    position: absolute;
+    background: #6a6d78;
+    pointer-events: none;
+    border-radius: 1px;
+}
+.lever-slot.vertical .lever-tick-mark {
+    right: calc(100% + 3px);
+    width: 8px;
+    height: 1.5px;
+    transform: translateY(-50%);
+}
+.lever-slot.horizontal .lever-tick-mark {
+    bottom: calc(100% + 3px);
+    height: 8px;
+    width: 1.5px;
+    transform: translateX(-50%);
+}
+
+/* ========== 响应式调整 ========== */
+@media (max-width: 768px) {
+    body {
+        padding: 15px;
+        gap: 15px;
+    }
+    .cockpit-panel {
+        padding: 10px;
+        gap: 4px;
+    }
+    .component-label {
+        font-size: 8px;
+    }
+}

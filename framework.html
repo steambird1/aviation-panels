@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空客驾驶舱风格组件库</title>
+    <link rel="stylesheet" href="styles/inst_general.css" />
+    <link rel="stylesheet" href="styles/panel_style.css" />
+</head>
+<body>
+
+    <!-- 面板容器将由JS动态创建 -->
+    <div id="panels-container" class="main-panel-div"></div>
+
+    <script type="module">
+        import {Panel, Display, ButtonSimple, ButtonWithLights, KnobDiscrete, KnobContinuous, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous, KnobInfinite} from "/scripts/panels.js";
+        import {AttitudeIndication} from "/scripts/att.js";
+        import {AirspeedIndication} from "/scripts/airspeed.js";
+        import {AltitudeIndication} from "/scripts/alt.js";
+        
+
+        (function() {
+            
+            console.log('空客驾驶舱风格组件库已加载。');
+            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, KnobDiscrete, KnobContinuous, Lever');
+            console.log('全局函数: updateDisplay({cmpName, upperLight, lowerLight})');
+            console.log('所有组件通过 CockpitComponents 命名空间访问。');
+
+            // ==================== 演示代码 ====================
+            function runDemo() {
+                const pc = document.getElementById('panels-container');
+                if (!pc) return;
+
+                // 清空
+                pc.innerHTML = '';
+
+                // 创建演示面板
+                const demoPanel = new Panel('demo-panel', {
+                    columns: 16,
+                    rows: 10,
+                    cellSize: 46,
+                    gap: 8,
+                    panelId: 'main-panel',
+                });
+
+                // PFD indication series (manually added; implemented on 30 Jun)
+                const attitudeDisplay = new Display('att-display', {
+                    width: 132,
+                    height: 132
+                });
+                demoPanel.addComponent(attitudeDisplay, { row: 1, col: 1, rowSpan: 3, colSpan: 3});
+                const attitudeObject = new AttitudeIndication(attitudeDisplay.getCanvas());
+                attitudeObject.updateDisplay(-13, 10);
+
+                const airspeedDisplay = new Display('spd-display', {
+                    width: 132,
+                    height: 132
+                });
+                demoPanel.addComponent(airspeedDisplay, { row: 1, col: 4, rowSpan: 3, colSpan: 3});
+                const airspeedObject = new AirspeedIndication(airspeedDisplay.getCanvas());
+                airspeedObject.updateDisplay(195.6, 0.4532, {value: 200, color: 'orange'});
+
+                const altitudeDisplay = new Display('alt-display', {
+                    width: 132,
+                    height: 132
+                });
+                demoPanel.addComponent(altitudeDisplay, { row: 1, col: 7, rowSpan: 3, colSpan: 3});
+                const altitudeObject = new AltitudeIndication(altitudeDisplay.getCanvas());
+                altitudeObject.updateDisplay(3456.7, 29.89, {value: 150, color: 'green'});
+
+                // 1. 显示屏
+                /*
+                const display = new Display('pfd-display', {
+                    width: 420,
+                    height: 260,
+                    label: 'PRIMARY FLIGHT DISPLAY',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(display, { row: 1, col: 1, rowSpan: 5, colSpan: 9 });
+
+                // 在canvas上绘制一些内容作为演示
+                const ctx = display.getContext();
+                const canvas = display.getCanvas();
+                // 绘制模拟的PFD风格背景
+                ctx.fillStyle = '#0a0c14';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // 地平线
+                const horizonY = canvas.height * 0.48;
+                ctx.fillStyle = '#1a3a6a';
+                ctx.fillRect(0, 0, canvas.width, horizonY);
+                ctx.fillStyle = '#5a3a1a';
+                ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, horizonY);
+                ctx.lineTo(canvas.width, horizonY);
+                ctx.stroke();
+                // 刻度标记
+                ctx.fillStyle = '#e0e8f0';
+                ctx.font = '12px Bahnschrift, sans-serif';
+                for (let i = -40; i <= 40; i += 10) {
+                    const y = horizonY - i * 3;
+                    ctx.fillText(i + '°', canvas.width / 2 + 60, y + 4);
+                    ctx.beginPath();
+                    ctx.moveTo(canvas.width / 2 + 30, y);
+                    ctx.lineTo(canvas.width / 2 + 45, y);
+                    ctx.strokeStyle = '#c0c8d0';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                // 速度带
+                ctx.fillStyle = '#40c860';
+                ctx.fillRect(30, canvas.height / 2 - 50, 50, 25);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Bahnschrift, sans-serif';
+                ctx.fillText('250', 40, canvas.height / 2 - 30);
+                ctx.fillText('KTS', 38, canvas.height / 2 - 10);
+                ctx.font = '10px Bahnschrift, sans-serif';
+                // 高度带
+                ctx.fillStyle = '#40c860';
+                ctx.fillRect(canvas.width - 80, canvas.height / 2 - 50, 55, 25);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Bahnschrift, sans-serif';
+                ctx.fillText('FL350', canvas.width - 75, canvas.height / 2 - 30);
+                ctx.font = '10px Bahnschrift, sans-serif';
+                ctx.fillText('ALT', canvas.width - 70, canvas.height / 2 - 10);
+                */
+
+
+
+                // 2. 按钮类型a - 仅按键 (2x1比例)
+                const btnSimple1 = new ButtonSimple('btn-ap1', {
+                    text: 'AP1',
+                    label: 'AUTOPILOT 1',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(btnSimple1, { row: 1, col: 11, rowSpan: 1, colSpan: 2 });
+
+                const btnSimple2 = new ButtonSimple('btn-ap2', {
+                    text: 'AP2',
+                    label: 'AUTOPILOT 2',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(btnSimple2, { row: 2, col: 11, rowSpan: 1, colSpan: 2 });
+
+                const btnSimple3 = new ButtonSimple('btn-athr', {
+                    text: 'A/THR',
+                    label: 'AUTO THRUST',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(btnSimple3, { row: 3, col: 11, rowSpan: 1, colSpan: 2 });
+
+                // 注册按钮点击事件
+                btnSimple1.on('click', (data) => {
+                    console.log(`按钮 ${data.cmpName} 被点击`);
+                    const btn = globalComponentRegistry.get(data.cmpName);
+                    if (btn && btn.buttonEl) {
+                        btn.buttonEl.style.borderColor = 'var(--color-green)';
+                        setTimeout(() => {
+                            if (btn.buttonEl) btn.buttonEl.style.borderColor = 'var(--border-color)';
+                        }, 200);
+                    }
+                });
+                btnSimple2.on('click', (data) => console.log(`按钮 ${data.cmpName} 被点击`));
+                btnSimple3.on('click', (data) => console.log(`按钮 ${data.cmpName} 被点击`));
+
+                // 3. 按钮类型b - 带指示灯
+                const btnLights1 = new ButtonWithLights('btn-fd', {
+                    text: 'FD',
+                    upperLightColor: 'green',
+                    lowerLightColor: 'amber',
+                    upperLightText: 'ON',
+                    lowerLightText: 'FAULT',
+                    label: 'FLIGHT DIR',
+                    labelPosition: 'top',
+                    initialUpperBrightness: 85,
+                    initialLowerBrightness: 0,
+                });
+                demoPanel.addComponent(btnLights1, { row: 4, col: 11, rowSpan: 1, colSpan: 2 });
+
+                const btnLights2 = new ButtonWithLights('btn-ls', {
+                    text: 'ILS',
+                    upperLightColor: 'white',
+                    lowerLightColor: 'amber',
+                    upperLightText: 'ARM',
+                    lowerLightText: 'FAIL',
+                    label: 'APPROACH',
+                    labelPosition: 'top',
+                    initialUpperBrightness: 60,
+                    initialLowerBrightness: 0,
+                });
+                demoPanel.addComponent(btnLights2, { row: 5, col: 11, rowSpan: 1, colSpan: 2 });
+
+                btnLights1.on('click', (data) => {
+                    console.log(`指示灯按钮 ${data.cmpName} 被点击`);
+                    // 切换下方指示灯演示
+                    const currentLower = btnLights1.getLowerBrightness();
+                    updateDisplay({
+                        cmpName: 'btn-fd',
+                        lowerLight: currentLower > 0 ? 0 : 90,
+                    });
+                });
+                btnLights2.on('click', (data) => {
+                    console.log(`指示灯按钮 ${data.cmpName} 被点击`);
+                    const currentLower = btnLights2.getLowerBrightness();
+                    updateDisplay({
+                        cmpName: 'btn-ls',
+                        lowerLight: currentLower > 0 ? 0 : 90,
+                    });
+                });
+
+                // 4. 离散旋钮
+                const knobDisc1 = new KnobDiscrete('knob-mode', {
+                    positions: ['OFF', 'STBY', 'AUTO', 'ON'],
+                    initialPosition: 2,
+                    diameter: 48,
+                    arcStartAngle: 200,
+                    arcEndAngle: 340,
+                    label: 'MODE SELECT',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(knobDisc1, { row: 6, col: 3, rowSpan: 2, colSpan: 2 });
+
+                knobDisc1.on('change', (data) => {
+                    console.log(`旋钮 ${data.cmpName} 切换到: ${data.positionName} (索引: ${data.position})`);
+                });
+
+                // 5. 连续旋钮
+                const knobCont1 = new KnobContinuous('knob-hdg', {
+                    minValue: 0,
+                    maxValue: 360,
+                    initialValue: 270,
+                    diameter: 48,
+                    arcStartAngle: 200,
+                    arcEndAngle: 340,
+                    label: 'HEADING',
+                    labelPosition: 'top',
+                    valueDisplayPrecision: 0,
+                });
+                demoPanel.addComponent(knobCont1, { row: 6, col: 6, rowSpan: 2, colSpan: 2 });
+
+                knobCont1.on('change', (data) => {
+                    console.log(`连续旋钮 ${data.cmpName} 值: ${data.value.toFixed(0)}°`);
+                });
+
+                // 6. 拨杆
+                const lever1 = new Lever('lever-gear', {
+                    positions: ['DOWN', 'UP'],
+                    initialPosition: 0,
+                    orientation: 'vertical',
+                    slotLength: 90,
+                    label: 'LANDING GEAR',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(lever1, { row: 6, col: 9, rowSpan: 3, colSpan: 1 });
+
+                lever1.on('change', (data) => {
+                    console.log(`拨杆 ${data.cmpName} 切换到: ${data.positionName}`);
+                });
+
+                const lever2 = new Lever('lever-flaps', {
+                    positions: ['0', '1', '2', '3', 'FULL'],
+                    initialPosition: 1,
+                    orientation: 'vertical',
+                    slotLength: 110,
+                    label: 'FLAPS',
+                    labelPosition: 'top',
+                });
+                demoPanel.addComponent(lever2, { row: 6, col: 14, rowSpan: 4, colSpan: 1 });
+
+                lever2.on('change', (data) => {
+                    console.log(`拨杆 ${data.cmpName} 切换到: ${data.positionName}`);
+                });
+
+                // 7. 更多按钮演示
+                const btnMore1 = new ButtonSimple('btn-ecam', {
+                    text: 'ECAM',
+                    label: 'SYSTEM',
+                    labelPosition: 'bottom',
+                });
+                demoPanel.addComponent(btnMore1, { row: 7, col: 1, rowSpan: 1, colSpan: 2 });
+
+                const btnMore2 = new ButtonWithLights('btn-master-caution', {
+                    text: '  ',
+                    // upperLightColor: 'red',
+                    lowerLightColor: 'amber',
+                    // upperLightText: '',
+                    lowerLightText: 'CAUT',
+                    // label: 'MASTER',
+                    // labelPosition: 'bottom',
+                    // initialUpperBrightness: 0,
+                    initialLowerBrightness: 75,
+                });
+                demoPanel.addComponent(btnMore2, { row: 9, col: 1, rowSpan: 1, colSpan: 2 });
+
+                btnMore2.on('click', () => {
+                    const upper = btnMore2.getUpperBrightness();
+                    updateDisplay({
+                        cmpName: 'btn-master-caution',
+                        upperLight: upper > 0 ? 0 : 95,
+                        lowerLight: upper > 0 ? 75 : 0,
+                    });
+                });
+
+                // 添加第二个面板展示更多组件
+                const panel2 = new Panel('panel-2', {
+                    columns: 8,
+                    rows: 5,
+                    cellSize: 44,
+                    gap: 8,
+                    panelId: 'secondary-panel',
+                });
+                const pc2 = document.getElementById('panels-container');
+                // panel2已经自动添加到panels-container
+
+                const knobDisc2 = new KnobDiscrete('knob-range', {
+                    positions: ['10', '20', '40', '80', '160'],
+                    initialPosition: 2,
+                    diameter: 44,
+                    arcStartAngle: 195,
+                    arcEndAngle: 345,
+                    label: 'RANGE (NM)',
+                    labelPosition: 'top',
+                });
+                panel2.addComponent(knobDisc2, { row: 1, col: 1, rowSpan: 2, colSpan: 2 });
+                knobDisc2.on('change', (data) => console.log(`Range: ${data.positionName} NM`));
+
+                const knobCont2 = new KnobContinuous('knob-brightness', {
+                    minValue: 0,
+                    maxValue: 100,
+                    initialValue: 70,
+                    diameter: 44,
+                    arcStartAngle: 200,
+                    arcEndAngle: 340,
+                    label: 'BRIGHTNESS',
+                    labelPosition: 'top',
+                    valueDisplayPrecision: 0,
+                });
+                panel2.addComponent(knobCont2, { row: 1, col: 4, rowSpan: 2, colSpan: 2 });
+                knobCont2.on('change', (data) => console.log(`亮度: ${data.value.toFixed(0)}%`));
+
+                const lever3 = new Lever('lever-speed-brake', {
+                    positions: ['RET', '1/2', 'FULL'],
+                    initialPosition: 0,
+                    orientation: 'horizontal',
+                    slotLength: 100,
+                    label: 'SPEED BRAKE',
+                    labelPosition: 'top',
+                });
+                panel2.addComponent(lever3, { row: 3, col: 1, rowSpan: 1, colSpan: 4 });
+                lever3.on('change', (data) => console.log(`减速板: ${data.positionName}`));
+
+                // --- 新增：连续拨杆演示 ---
+                const leverContinuous1 = new LeverContinuous('lever-throttle', {
+                    minValue: 0,
+                    maxValue: 100,
+                    initialValue: 65,
+                    orientation: 'vertical',
+                    slotLength: 110,
+                    label: 'THROTTLE %',
+                    labelPosition: 'top',
+                    valueDisplayPrecision: 1,
+                });
+                demoPanel.addComponent(leverContinuous1, { row: 6, col: 12, rowSpan: 4, colSpan: 1 });
+                leverContinuous1.on('change', (data) => {
+                    console.log(`连续拨杆 ${data.cmpName} 值: ${data.value.toFixed(1)}`);
+                });
+
+                // --- 新增：无限旋钮演示 ---
+                const knobInf1 = new KnobInfinite('knob-freq', {
+                    initialValue: 29.92,
+                    valuePerRevolution: 1,  // 每转一圈数值变化200
+                    diameter: 48,
+                    label: 'BARO',
+                    labelPosition: 'bottom',
+                    valueDisplayPrecision: 2,
+                });
+                demoPanel.addComponent(knobInf1, { row: 8, col: 3, rowSpan: 2, colSpan: 2 });
+                knobInf1.on('change', (data) => {
+                    console.log(`无限旋钮 ${data.cmpName} 当前值: ${data.value.toFixed(0)}`);
+                });
+
+                // 第二个面板中也添加一个连续拨杆（水平方向）
+                const leverContinuous2 = new LeverContinuous('lever-trim', {
+                    minValue: -5,
+                    maxValue: 10,
+                    initialValue: 0,
+                    orientation: 'horizontal',
+                    slotLength: 120,
+                    label: 'PITCH TRIM',
+                    labelPosition: 'top',
+                    valueDisplayPrecision: 1,
+                });
+                panel2.addComponent(leverContinuous2, { row: 4, col: 1, rowSpan: 1, colSpan: 4 });
+                leverContinuous2.on('change', (data) => {
+                    console.log(`配平拨杆 值: ${data.value.toFixed(1)}`);
+                });
+
+                console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');
+                console.log('尝试在控制台运行: updateDisplay({cmpName: "btn-fd", lowerLight: 90})');
+                console.log('或: updateDisplay({cmpName: "btn-master-caution", upperLight: 95, lowerLight: 0})');
+            }
+
+            // 页面加载完成后运行演示
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', runDemo);
+            } else {
+                runDemo();
+            }
+
+        })();
+    </script>
+</body>
+</html>

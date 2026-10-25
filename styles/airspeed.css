@@ -1,0 +1,173 @@
+
+:root {
+    --bg: #1a1a2e;
+}
+
+/* This actually has no conflict with panel_style.css */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    gap: 20px;
+    user-select: none;
+}
+
+.instrument-panel {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.instrument-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.instrument-label {
+    color: #aaa;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 24px 28px;
+    min-width: 280px;
+    backdrop-filter: blur(10px);
+}
+
+.controls h3 {
+    color: #ccc;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-align: center;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.control-group label {
+    color: #999;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.control-group input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none; /* Suppress standard warning */
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #333;
+    outline: none;
+    cursor: pointer;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;  /* Suppress standard warning */
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #555;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb:active {
+    transform: scale(1.15);
+}
+
+.control-group .value-display {
+    color: #ddd;
+    font-size: 13px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    letter-spacing: 1px;
+}
+
+.color-presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.color-preset {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.color-preset:hover {
+    transform: scale(1.15);
+    border-color: #fff;
+}
+.color-preset.active {
+    border-color: #fff;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+}
+
+.btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    flex: 1;
+    min-width: 60px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ccc;
+    cursor: pointer;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    text-align: center;
+    font-weight: 500;
+}
+.btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+}
+.btn.active-btn {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: #fff;
+    color: #fff;
+}

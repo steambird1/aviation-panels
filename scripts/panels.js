@@ -1,0 +1,1739 @@
+// ==================== 全局组件注册表 ====================
+const globalComponentRegistry = new Map();
+
+export function registerComponent(name, instance) {
+    if (name && typeof name === 'string') {
+        globalComponentRegistry.set(name, instance);
+    }
+}
+
+export function getComponentByName(name) {
+    return globalComponentRegistry.get(name);
+}
+
+// ==================== 工具函数 ====================
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
+
+function mapRange(val, inMin, inMax, outMin, outMax) {
+    return outMin + ((val - inMin) / (inMax - inMin)) * (outMax - outMin);
+}
+
+function getGlowShadow(colorName) {
+    const map = {
+        'green': 'var(--shadow-glow-green)',
+        'amber': 'var(--shadow-glow-amber)',
+        'blue': 'var(--shadow-glow-blue)',
+        'red': 'var(--shadow-glow-red)',
+        'white': 'var(--shadow-glow-white)',
+        'cyan': 'var(--shadow-glow-cyan)',
+    };
+    return map[colorName] || 'var(--shadow-glow-white)';
+}
+
+function getColorVar(colorName) {
+    const map = {
+        'green': 'var(--color-green)',
+        'amber': 'var(--color-amber)',
+        'blue': 'var(--color-blue)',
+        'red': 'var(--color-red)',
+        'white': 'var(--color-white)',
+        'cyan': 'var(--color-cyan)',
+    };
+    return map[colorName] || 'var(--color-white)';
+}
+
+// ==================== 面板类 ====================
+export class Panel {
+    constructor(containerId, options = {}) {
+        const {
+            columns = 12, rows = 6, cellSize = 44, gap = 8, panelId = null
+        } = options;
+        this.columns = columns;
+        this.rows = rows;
+        this.cellSize = cellSize;
+        this.gap = gap;
+        this.panelId = panelId || ('panel_' + Date.now() + '_' + Math.random().toString(36).substr(2,
+            6));
+        this.components = [];
+
+        // 查找或创建容器
+        let containerEl = document.getElementById(containerId);
+        if (!containerEl) {
+            // 尝试在panels-container中查找
+            const pc = document.getElementById('panels-container');
+            if (pc) {
+                containerEl = document.createElement('div');
+                containerEl.id = containerId;
+                pc.appendChild(containerEl);
+            } else {
+                containerEl = document.createElement('div');
+                containerEl.id = containerId;
+                document.body.appendChild(containerEl);
+            }
+        }
+
+        // 创建面板div
+        this.panelDiv = document.createElement('div');
+        this.panelDiv.className = 'cockpit-panel';
+        this.panelDiv.style.gridTemplateColumns = `repeat(${columns}, ${cellSize}px)`;
+        this.panelDiv.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+        this.panelDiv.style.gap = `${gap}px`;
+        this.panelDiv.setAttribute('data-panel-id', this.panelId);
+
+        containerEl.appendChild(this.panelDiv);
+    }
+
+    addComponent(component, gridOptions = {}) {
+        const {
+            row = 1, col = 1, rowSpan = 1, colSpan = 1
+        } = gridOptions;
+        component.setGridPosition(row, col, rowSpan, colSpan);
+        component.attachToPanel(this);
+        this.components.push(component);
+        // 将组件的DOM元素添加到面板
+        if (component.wrapperDiv) {
+            this.panelDiv.appendChild(component.wrapperDiv);
+        }
+        return component;
+    }
+
+    getPanelDiv() {
+        return this.panelDiv;
+    }
+
+    getPanelId() {
+        return this.panelId;
+    }
+}
+
+// ==================== 组件基类 ====================
+class BaseComponent {
+    constructor(cmpName, options = {}) {
+        this.cmpName = cmpName || ('cmp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+        this.labelText = options.label || '';
+        this.labelPosition = options.labelPosition || 'top'; // top, bottom, left, right
+        this.gridRow = 1;
+        this.gridCol = 1;
+        this.gridRowSpan = 1;
+        this.gridColSpan = 1;
+        this.panel = null;
+        this.wrapperDiv = null;
+        this.labelDiv = null;
+        this._eventHandlers = {};
+
+        this._buildWrapper();
+        registerComponent(this.cmpName, this);
+    }
+
+    _buildWrapper() {
+        this.wrapperDiv = document.createElement('div');
+        this.wrapperDiv.className = 'component-wrapper';
+        this.wrapperDiv.setAttribute('data-cmp-name', this.cmpName);
+
+        // 描述性标签
+        if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+    }
+
+    setGridPosition(row, col, rowSpan, colSpan) {
+        this.gridRow = row;
+        this.gridCol = col;
+        this.gridRowSpan = rowSpan;
+        this.gridColSpan = colSpan;
+        if (this.wrapperDiv) {
+            this.wrapperDiv.style.gridRow = `${row} / span ${rowSpan}`;
+            this.wrapperDiv.style.gridColumn = `${col} / span ${colSpan}`;
+        }
+    }
+
+    attachToPanel(panel) {
+        this.panel = panel;
+    }
+
+    on(eventName, callback) {
+        if (!this._eventHandlers[eventName]) {
+            this._eventHandlers[eventName] = [];
+        }
+        this._eventHandlers[eventName].push(callback);
+        return this;
+    }
+
+    _emit(eventName, data) {
+        const handlers = this._eventHandlers[eventName] || [];
+        handlers.forEach(cb => {
+            try {
+                cb(data);
+            } catch (e) {
+                console.error(`事件处理错误 [${eventName}] on ${this.cmpName}:`, e);
+            }
+        });
+    }
+
+    getComponentName() {
+        return this.cmpName;
+    }
+
+    destroy() {
+        globalComponentRegistry.delete(this.cmpName);
+        if (this.wrapperDiv && this.wrapperDiv.parentNode) {
+            this.wrapperDiv.parentNode.removeChild(this.wrapperDiv);
+        }
+        this._eventHandlers = {};
+    }
+}
+
+// ==================== 显示屏组件 ====================
+export class Display extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            width = 400,
+            height = 250,
+            label = '',
+            labelPosition = 'top'
+        } = options;
+        this.canvasWidth = width;
+        this.canvasHeight = height;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+
+        // 重建wrapper以包含canvas
+        this._buildDisplayWrapper();
+    }
+
+    _buildDisplayWrapper() {
+        // 清理旧wrapper
+        if (this.wrapperDiv && this.wrapperDiv.parentNode) {
+            this.wrapperDiv.parentNode.removeChild(this.wrapperDiv);
+        }
+        this.wrapperDiv = document.createElement('div');
+        this.wrapperDiv.className = 'component-wrapper';
+        this.wrapperDiv.setAttribute('data-cmp-name', this.cmpName);
+        this.wrapperDiv.style.overflow = 'visible';
+
+        // 描述性标签
+        if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        // 显示屏容器
+        const displayContainer = document.createElement('div');
+        displayContainer.className = 'display-container';
+        displayContainer.style.width = this.canvasWidth + 'px';
+        displayContainer.style.height = this.canvasHeight + 'px';
+        displayContainer.style.flexShrink = '0';
+
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = this.canvasWidth;
+        this.canvas.height = this.canvasHeight;
+        this.canvas.style.width = this.canvasWidth + 'px';
+        this.canvas.style.height = this.canvasHeight + 'px';
+        this.ctx = this.canvas.getContext('2d');
+
+        displayContainer.appendChild(this.canvas);
+        this.wrapperDiv.appendChild(displayContainer);
+    }
+
+    getCanvas() {
+        return this.canvas;
+    }
+
+    getContext() {
+        return this.ctx;
+    }
+
+    resizeCanvas(width, height) {
+        this.canvasWidth = width;
+        this.canvasHeight = height;
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.canvas.style.width = width + 'px';
+        this.canvas.style.height = height + 'px';
+        const container = this.canvas.parentElement;
+        if (container) {
+            container.style.width = width + 'px';
+            container.style.height = height + 'px';
+        }
+    }
+
+    setGridPosition(row, col, rowSpan, colSpan) {
+        super.setGridPosition(row, col, rowSpan, colSpan);
+        // 显示屏使用其canvas实际大小，wrapper需要足够大
+        if (this.wrapperDiv) {
+            this.wrapperDiv.style.minWidth = this.canvasWidth + 'px';
+            this.wrapperDiv.style.minHeight = this.canvasHeight + 'px';
+        }
+    }
+}
+
+// ==================== 按钮 - 类型a (仅按键) ====================
+export class ButtonSimple extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            text = '',
+            label = '',
+            labelPosition = 'top'
+        } = options;
+        this.buttonText = text;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+
+        this._buildButton();
+    }
+
+    _buildButton() {
+        // 更新wrapper
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        this.buttonEl = document.createElement('button');
+        this.buttonEl.className = 'btn-simple';
+        this.buttonEl.textContent = this.buttonText;
+        this.buttonEl.setAttribute('type', 'button');
+        this.buttonEl.setAttribute('aria-label', this.cmpName);
+
+        this.buttonEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            this._emit('click', { cmpName: this.cmpName, event: e });
+        });
+
+        // 移除旧按钮
+        const oldBtn = this.wrapperDiv.querySelector('.btn-simple');
+        if (oldBtn) oldBtn.remove();
+
+        this.wrapperDiv.appendChild(this.buttonEl);
+    }
+
+    setText(text) {
+        this.buttonText = text;
+        if (this.buttonEl) {
+            this.buttonEl.textContent = text;
+        }
+    }
+
+    getButtonElement() {
+        return this.buttonEl;
+    }
+
+    // 兼容updateDisplay接口（此类型按钮无指示灯，但保持接口一致）
+    updateLights(upperLight, lowerLight) {
+        // 无操作，此按钮类型没有指示灯
+    }
+}
+
+// ==================== 按钮 - 类型b (按键与指示灯结合) ====================
+export class ButtonWithLights extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            text = '',
+            upperLightColor = 'white',
+            lowerLightColor = 'amber',
+            upperLightText = '',
+            lowerLightText = '',
+            label = '',
+            labelPosition = 'top',
+            initialUpperBrightness = 0,
+            initialLowerBrightness = 0,
+        } = options;
+        this.buttonText = text;
+        this.upperLightColor = upperLightColor;
+        this.lowerLightColor = lowerLightColor;
+        this.upperLightText = upperLightText;
+        this.lowerLightText = lowerLightText;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this._upperBrightness = initialUpperBrightness;
+        this._lowerBrightness = initialLowerBrightness;
+
+        this._buildButtonWithLights();
+    }
+
+    _buildButtonWithLights() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        // 清除旧内容
+        const oldBtn = this.wrapperDiv.querySelector('.btn-with-lights');
+        if (oldBtn) oldBtn.remove();
+
+        this.btnContainer = document.createElement('div');
+        this.btnContainer.className = 'btn-with-lights';
+
+        // 上方指示灯（无外侧框）
+        this.upperLightEl = document.createElement('div');
+        this.upperLightEl.className = 'light-upper';
+        this.upperLightEl.textContent = this.upperLightText;
+        this.upperLightEl.style.color = getColorVar(this.upperLightColor);
+        this._applyUpperBrightness();
+
+        // 按钮主体
+        this.buttonBodyEl = document.createElement('div');
+        this.buttonBodyEl.className = 'btn-body';
+        this.buttonBodyEl.textContent = this.buttonText;
+        this.buttonBodyEl.setAttribute('aria-label', this.cmpName);
+
+        // 下方指示灯（有外侧框）
+        this.lowerLightEl = document.createElement('div');
+        this.lowerLightEl.className = 'light-lower';
+        this.lowerLightEl.textContent = this.lowerLightText;
+        this.lowerLightEl.style.color = getColorVar(this.lowerLightColor);
+        this.lowerLightEl.style.borderColor = getColorVar(this.lowerLightColor);
+        this._applyLowerBrightness();
+
+        this.btnContainer.appendChild(this.upperLightEl);
+        this.btnContainer.appendChild(this.buttonBodyEl);
+        this.btnContainer.appendChild(this.lowerLightEl);
+
+        this.buttonBodyEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._emit('click', { cmpName: this.cmpName, event: e });
+        });
+
+        // 也让指示灯区域可点击
+        this.btnContainer.addEventListener('click', (e) => {
+            if (e.target === this.btnContainer || e.target === this.upperLightEl || e
+                .target === this.lowerLightEl) {
+                this._emit('click', { cmpName: this.cmpName, event: e });
+            }
+        });
+
+        this.wrapperDiv.appendChild(this.btnContainer);
+    }
+
+    _applyUpperBrightness() {
+        if (!this.upperLightEl) return;
+        const b = this._upperBrightness;
+        if (b <= 0) {
+            this.upperLightEl.classList.remove('lit');
+            this.upperLightEl.style.opacity = '0';
+            this.upperLightEl.style.textShadow = 'none';
+        } else {
+            this.upperLightEl.classList.add('lit');
+            const opacity = clamp(b / 100, 0.06, 1);
+            this.upperLightEl.style.opacity = opacity;
+            const glowIntensity = b / 100;
+            const glowSize = 4 + glowIntensity * 10;
+            this.upperLightEl.style.textShadow =
+                `0 0 ${glowSize}px ${getColorVar(this.upperLightColor)}`;
+        }
+    }
+
+    _applyLowerBrightness() {
+        if (!this.lowerLightEl) return;
+        const b = this._lowerBrightness;
+        if (b <= 0) {
+            this.lowerLightEl.classList.remove('lit');
+            this.lowerLightEl.style.opacity = '0';
+            this.lowerLightEl.style.boxShadow = 'none';
+        } else {
+            this.lowerLightEl.classList.add('lit');
+            const opacity = clamp(b / 100, 0.06, 1);
+            this.lowerLightEl.style.opacity = opacity;
+            const glowIntensity = b / 100;
+            const glowSize = 3 + glowIntensity * 8;
+            this.lowerLightEl.style.boxShadow =
+                `0 0 ${glowSize}px ${getColorVar(this.lowerLightColor)}, inset 0 0 ${glowSize * 0.6}px ${getColorVar(this.lowerLightColor)}`;
+            this.lowerLightEl.style.borderColor = getColorVar(this.lowerLightColor);
+        }
+    }
+
+    updateLights(upperLight, lowerLight) {
+        if (upperLight !== undefined) {
+            this._upperBrightness = clamp(upperLight, 0, 100);
+            this._applyUpperBrightness();
+        }
+        if (lowerLight !== undefined) {
+            this._lowerBrightness = clamp(lowerLight, 0, 100);
+            this._applyLowerBrightness();
+        }
+    }
+
+    setUpperLightText(text) {
+        this.upperLightText = text;
+        if (this.upperLightEl) this.upperLightEl.textContent = text;
+    }
+
+    setLowerLightText(text) {
+        this.lowerLightText = text;
+        if (this.lowerLightEl) this.lowerLightEl.textContent = text;
+    }
+
+    setButtonText(text) {
+        this.buttonText = text;
+        if (this.buttonBodyEl) this.buttonBodyEl.textContent = text;
+    }
+
+    getUpperBrightness() { return this._upperBrightness; }
+    getLowerBrightness() { return this._lowerBrightness; }
+}
+
+// ==================== 旋钮 - 类型a (离散档位) ====================
+export class KnobDiscrete extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            positions = ['OFF', 'STBY', 'ON'],
+            initialPosition = 0,
+            diameter = 50,
+            arcStartAngle = 210,
+            arcEndAngle = 330,
+            label = '',
+            labelPosition = 'top',
+        } = options;
+        this.positions = positions; // 档位名称数组
+        this.currentPosition = clamp(initialPosition, 0, positions.length - 1);
+        this.diameter = diameter;
+        this.arcStartAngle = arcStartAngle; // 起始角度（度，0=顶部，顺时针）
+        this.arcEndAngle = arcEndAngle; // 结束角度
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this._isDragging = false;
+        this._dragStartAngle = 0;
+        this._dragStartPosition = 0;
+
+        this._buildKnob();
+        this._updateKnobRotation();
+    }
+
+    _buildKnob() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        const oldKnob = this.wrapperDiv.querySelector('.knob-container');
+        if (oldKnob) oldKnob.remove();
+
+        const containerSize = this.diameter + 36;
+        this.knobContainer = document.createElement('div');
+        this.knobContainer.className = 'knob-container';
+        this.knobContainer.style.width = containerSize + 'px';
+        this.knobContainer.style.height = containerSize + 'px';
+
+        // 档位标签
+        this._tickLabelEls = [];
+        const numPositions = this.positions.length;
+        const centerX = containerSize / 2;
+        const centerY = containerSize / 2;
+        const labelRadius = this.diameter / 2 + 14;
+
+        for (let i = 0; i < numPositions; i++) {
+            const angleDeg = this._getAngleForPosition(i);
+            const angleRad = (angleDeg - 90) * Math.PI / 180;
+            const lx = centerX + labelRadius * Math.cos(angleRad);
+            const ly = centerY + labelRadius * Math.sin(angleRad);
+            const tickLabel = document.createElement('span');
+            tickLabel.className = 'knob-tick-label';
+            tickLabel.textContent = this.positions[i];
+            tickLabel.style.left = lx + 'px';
+            tickLabel.style.top = ly + 'px';
+            if (i === this.currentPosition) {
+                tickLabel.classList.add('active');
+            }
+            this.knobContainer.appendChild(tickLabel);
+            this._tickLabelEls.push(tickLabel);
+        }
+
+        // 旋钮主体
+        this.knobOuter = document.createElement('div');
+        this.knobOuter.className = 'knob-outer';
+        this.knobOuter.style.width = this.diameter + 'px';
+        this.knobOuter.style.height = this.diameter + 'px';
+        this.knobOuter.style.position = 'absolute';
+        this.knobOuter.style.left = (containerSize / 2 - this.diameter / 2) + 'px';
+        this.knobOuter.style.top = (containerSize / 2 - this.diameter / 2) + 'px';
+
+        const innerSize = this.diameter * 0.55;
+        this.knobInner = document.createElement('div');
+        this.knobInner.className = 'knob-inner';
+        this.knobInner.style.width = innerSize + 'px';
+        this.knobInner.style.height = innerSize + 'px';
+
+        // 指示线
+        this.indicatorLine = document.createElement('div');
+        this.indicatorLine.className = 'knob-indicator';
+        const indicatorHeight = this.diameter * 0.38;
+        const indicatorWidth = Math.max(2, this.diameter * 0.05);
+        this.indicatorLine.style.height = indicatorHeight + 'px';
+        this.indicatorLine.style.width = indicatorWidth + 'px';
+        this.indicatorLine.style.bottom = '50%';
+        this.indicatorLine.style.left = '50%';
+        this.indicatorLine.style.marginLeft = (-indicatorWidth / 2) + 'px';
+        this.indicatorLine.style.transformOrigin = 'bottom center';
+        this.indicatorLine.style.borderRadius = (indicatorWidth / 2) + 'px';
+
+        this.knobOuter.appendChild(this.indicatorLine);
+        this.knobOuter.appendChild(this.knobInner);
+        this.knobContainer.appendChild(this.knobOuter);
+        this.wrapperDiv.appendChild(this.knobContainer);
+
+        // 事件绑定
+        this._bindKnobEvents();
+    }
+
+    _getAngleForPosition(posIndex) {
+        const numPositions = this.positions.length;
+        if (numPositions <= 1) return (this.arcStartAngle + this.arcEndAngle) / 2;
+        return mapRange(posIndex, 0, numPositions - 1, this.arcStartAngle, this.arcEndAngle);
+    }
+
+    _getPositionForAngle(angleDeg) {
+        const numPositions = this.positions.length;
+        if (numPositions <= 1) return 0;
+        let raw = mapRange(angleDeg, this.arcStartAngle, this.arcEndAngle, 0, numPositions - 1);
+        return Math.round(clamp(raw, 0, numPositions - 1));
+    }
+
+    _updateKnobRotation() {
+        const angle = this._getAngleForPosition(this.currentPosition);
+        if (this.indicatorLine) {
+            this.indicatorLine.style.transform = `rotate(${angle}deg)`;
+        }
+        // 更新档位标签高亮
+        if (this._tickLabelEls) {
+            this._tickLabelEls.forEach((el, i) => {
+                if (i === this.currentPosition) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+    }
+
+    _bindKnobEvents() {
+        if (!this.knobContainer) return;
+
+        const getAngleFromEvent = (e) => {
+            const rect = this.knobContainer.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const dx = clientX - cx;
+            const dy = clientY - cy;
+            let angleRad = Math.atan2(dy, dx);
+            let angleDeg = angleRad * 180 / Math.PI + 90;
+            if (angleDeg < 0) angleDeg += 360;
+            return angleDeg;
+        };
+
+        const onPointerDown = (e) => {
+            e.preventDefault();
+            this._isDragging = true;
+            this._dragStartAngle = getAngleFromEvent(e);
+            this._dragStartPosition = this.currentPosition;
+            this.knobContainer.style.cursor = 'grabbing';
+            document.body.style.cursor = 'grabbing';
+        };
+
+        const onPointerMove = (e) => {
+            if (!this._isDragging) return;
+            e.preventDefault();
+            const currentAngle = getAngleFromEvent(e);
+            let angleDiff = currentAngle - this._dragStartAngle;
+            if (angleDiff > 180) angleDiff -= 360;
+            if (angleDiff < -180) angleDiff += 360;
+            const totalRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
+            const numPositions = this.positions.length;
+            const anglePerStep = numPositions > 1 ? totalRange / (numPositions - 1) : totalRange;
+            const stepChange = Math.round(angleDiff / anglePerStep);
+            const newPos = clamp(this._dragStartPosition + stepChange, 0, numPositions - 1);
+            if (newPos !== this.currentPosition) {
+                this.currentPosition = newPos;
+                this._updateKnobRotation();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    position: this.currentPosition,
+                    positionName: this.positions[this.currentPosition],
+                });
+            }
+        };
+
+        const onPointerUp = (e) => {
+            if (!this._isDragging) return;
+            this._isDragging = false;
+            this.knobContainer.style.cursor = 'grab';
+            document.body.style.cursor = '';
+        };
+
+        this.knobContainer.addEventListener('mousedown', onPointerDown);
+        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchend', onPointerUp);
+
+        // 滚轮切换档位
+        this.knobContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const numPositions = this.positions.length;
+            if (e.deltaY > 0) {
+                this.currentPosition = clamp(this.currentPosition + 1, 0, numPositions - 1);
+            } else {
+                this.currentPosition = clamp(this.currentPosition - 1, 0, numPositions - 1);
+            }
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                position: this.currentPosition,
+                positionName: this.positions[this.currentPosition],
+            });
+        }, { passive: false });
+
+        // 存储清理引用
+        this._knobCleanup = () => {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchend', onPointerUp);
+        };
+    }
+
+    getPosition() { return this.currentPosition; }
+    getPositionName() { return this.positions[this.currentPosition]; }
+
+    setPosition(posIndex) {
+        const newPos = clamp(posIndex, 0, this.positions.length - 1);
+        if (newPos !== this.currentPosition) {
+            this.currentPosition = newPos;
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                position: this.currentPosition,
+                positionName: this.positions[this.currentPosition],
+            });
+        }
+    }
+
+    // 兼容updateDisplay接口
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._knobCleanup) this._knobCleanup();
+        super.destroy();
+    }
+}
+
+// ==================== 旋钮 - 类型b (连续调节) ====================
+export class KnobContinuous extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            minValue = 0,
+            maxValue = 100,
+            initialValue = 50,
+            diameter = 50,
+            arcStartAngle = 210,
+            arcEndAngle = 330,
+            label = '',
+            labelPosition = 'top',
+            valueDisplayPrecision = 0,
+        } = options;
+        this.minValue = minValue;
+        this.maxValue = maxValue;
+        this.currentValue = clamp(initialValue, minValue, maxValue);
+        this.diameter = diameter;
+        this.arcStartAngle = arcStartAngle;
+        this.arcEndAngle = arcEndAngle;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this.valueDisplayPrecision = valueDisplayPrecision;
+        this._isDragging = false;
+        this._dragStartAngle = 0;
+        this._dragStartValue = 0;
+
+        this._buildKnob();
+        this._updateKnobRotation();
+    }
+
+    _buildKnob() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        const oldKnob = this.wrapperDiv.querySelector('.knob-container');
+        if (oldKnob) oldKnob.remove();
+
+        const containerSize = this.diameter + 36;
+        this.knobContainer = document.createElement('div');
+        this.knobContainer.className = 'knob-container';
+        this.knobContainer.style.width = containerSize + 'px';
+        this.knobContainer.style.height = containerSize + 'px';
+
+        // 最小值/最大值标签
+        const centerX = containerSize / 2;
+        const centerY = containerSize / 2;
+        const labelRadius = this.diameter / 2 + 14;
+
+        const minAngleRad = (this.arcStartAngle - 90) * Math.PI / 180;
+        const minLx = centerX + labelRadius * Math.cos(minAngleRad);
+        const minLy = centerY + labelRadius * Math.sin(minAngleRad);
+        this.minLabel = document.createElement('span');
+        this.minLabel.className = 'knob-tick-label';
+        this.minLabel.textContent = this.minValue.toFixed(this.valueDisplayPrecision);
+        this.minLabel.style.left = minLx + 'px';
+        this.minLabel.style.top = minLy + 'px';
+        this.knobContainer.appendChild(this.minLabel);
+
+        const maxAngleRad = (this.arcEndAngle - 90) * Math.PI / 180;
+        const maxLx = centerX + labelRadius * Math.cos(maxAngleRad);
+        const maxLy = centerY + labelRadius * Math.sin(maxAngleRad);
+        this.maxLabel = document.createElement('span');
+        this.maxLabel.className = 'knob-tick-label';
+        this.maxLabel.textContent = this.maxValue.toFixed(this.valueDisplayPrecision);
+        this.maxLabel.style.left = maxLx + 'px';
+        this.maxLabel.style.top = maxLy + 'px';
+        this.knobContainer.appendChild(this.maxLabel);
+
+        // 当前值显示（中心）
+        this.valueDisplay = document.createElement('span');
+        this.valueDisplay.className = 'knob-tick-label active';
+        this.valueDisplay.style.left = centerX + 'px';
+        this.valueDisplay.style.top = (centerY - this.diameter / 2 - 8) + 'px';
+        this.valueDisplay.textContent = this.currentValue.toFixed(this.valueDisplayPrecision);
+        this.knobContainer.appendChild(this.valueDisplay);
+
+        // 旋钮主体
+        this.knobOuter = document.createElement('div');
+        this.knobOuter.className = 'knob-outer';
+        this.knobOuter.style.width = this.diameter + 'px';
+        this.knobOuter.style.height = this.diameter + 'px';
+        this.knobOuter.style.position = 'absolute';
+        this.knobOuter.style.left = (containerSize / 2 - this.diameter / 2) + 'px';
+        this.knobOuter.style.top = (containerSize / 2 - this.diameter / 2) + 'px';
+
+        const innerSize = this.diameter * 0.55;
+        this.knobInner = document.createElement('div');
+        this.knobInner.className = 'knob-inner';
+        this.knobInner.style.width = innerSize + 'px';
+        this.knobInner.style.height = innerSize + 'px';
+
+        this.indicatorLine = document.createElement('div');
+        this.indicatorLine.className = 'knob-indicator';
+        const indicatorHeight = this.diameter * 0.38;
+        const indicatorWidth = Math.max(2, this.diameter * 0.05);
+        this.indicatorLine.style.height = indicatorHeight + 'px';
+        this.indicatorLine.style.width = indicatorWidth + 'px';
+        this.indicatorLine.style.bottom = '50%';
+        this.indicatorLine.style.left = '50%';
+        this.indicatorLine.style.marginLeft = (-indicatorWidth / 2) + 'px';
+        this.indicatorLine.style.transformOrigin = 'bottom center';
+        this.indicatorLine.style.borderRadius = (indicatorWidth / 2) + 'px';
+
+        this.knobOuter.appendChild(this.indicatorLine);
+        this.knobOuter.appendChild(this.knobInner);
+        this.knobContainer.appendChild(this.knobOuter);
+        this.wrapperDiv.appendChild(this.knobContainer);
+
+        this._bindKnobEvents();
+    }
+
+    _getAngleForValue(val) {
+        return mapRange(val, this.minValue, this.maxValue, this.arcStartAngle, this.arcEndAngle);
+    }
+
+    _getValueForAngle(angleDeg) {
+        return mapRange(angleDeg, this.arcStartAngle, this.arcEndAngle, this.minValue, this.maxValue);
+    }
+
+    _updateKnobRotation() {
+        const angle = this._getAngleForValue(this.currentValue);
+        if (this.indicatorLine) {
+            this.indicatorLine.style.transform = `rotate(${angle}deg)`;
+        }
+        if (this.valueDisplay) {
+            this.valueDisplay.textContent = this.currentValue.toFixed(this.valueDisplayPrecision);
+        }
+    }
+
+    _bindKnobEvents() {
+        if (!this.knobContainer) return;
+
+        const getAngleFromEvent = (e) => {
+            const rect = this.knobContainer.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const dx = clientX - cx;
+            const dy = clientY - cy;
+            let angleRad = Math.atan2(dy, dx);
+            let angleDeg = angleRad * 180 / Math.PI + 90;
+            if (angleDeg < 0) angleDeg += 360;
+            return angleDeg;
+        };
+
+        const clampAngleToRange = (angleDeg) => {
+            const start = this.arcStartAngle;
+            const end = this.arcEndAngle;
+            // 处理角度环绕
+            let a = angleDeg;
+            const mid = (start + end) / 2;
+            while (a - mid > 180) a -= 360;
+            while (a - mid < -180) a += 360;
+            return clamp(a, Math.min(start, end), Math.max(start, end));
+        };
+
+        const onPointerDown = (e) => {
+            e.preventDefault();
+            this._isDragging = true;
+            const rawAngle = getAngleFromEvent(e);
+            this._dragStartAngle = clampAngleToRange(rawAngle);
+            this._dragStartValue = this.currentValue;
+            this.knobContainer.style.cursor = 'grabbing';
+            document.body.style.cursor = 'grabbing';
+        };
+
+        const onPointerMove = (e) => {
+            if (!this._isDragging) return;
+            e.preventDefault();
+            const rawAngle = getAngleFromEvent(e);
+            const clampedAngle = clampAngleToRange(rawAngle);
+            const angleDiff = clampedAngle - this._dragStartAngle;
+            const totalAngleRange = Math.abs(this.arcEndAngle - this.arcStartAngle);
+            const valueRange = this.maxValue - this.minValue;
+            const valueChange = (angleDiff / totalAngleRange) * valueRange;
+            const newValue = clamp(this._dragStartValue + valueChange, this.minValue, this
+                .maxValue);
+            if (Math.abs(newValue - this.currentValue) > 0.0001) {
+                this.currentValue = newValue;
+                this._updateKnobRotation();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    value: this.currentValue,
+                });
+            }
+        };
+
+        const onPointerUp = () => {
+            if (!this._isDragging) return;
+            this._isDragging = false;
+            this.knobContainer.style.cursor = 'grab';
+            document.body.style.cursor = '';
+        };
+
+        this.knobContainer.addEventListener('mousedown', onPointerDown);
+        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchend', onPointerUp);
+
+        this.knobContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const valueRange = this.maxValue - this.minValue;
+            const step = valueRange / 100;
+            if (e.deltaY > 0) {
+                this.currentValue = clamp(this.currentValue + step, this.minValue, this
+                    .maxValue);
+            } else {
+                this.currentValue = clamp(this.currentValue - step, this.minValue, this
+                    .maxValue);
+            }
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
+        }, { passive: false });
+
+        this._knobCleanup = () => {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchend', onPointerUp);
+        };
+    }
+
+    getValue() { return this.currentValue; }
+
+    setValue(val) {
+        const newVal = clamp(val, this.minValue, this.maxValue);
+        if (Math.abs(newVal - this.currentValue) > 0.0001) {
+            this.currentValue = newVal;
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
+        }
+    }
+
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._knobCleanup) this._knobCleanup();
+        super.destroy();
+    }
+}
+
+// ==================== 拨杆组件 ====================
+export class Lever extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            positions = ['DOWN', 'CENTER', 'UP'],
+            initialPosition = 0,
+            orientation = 'vertical',
+            slotLength = 100,
+            label = '',
+            labelPosition = 'top',
+        } = options;
+        this.positions = positions;
+        this.currentPosition = clamp(initialPosition, 0, positions.length - 1);
+        this.orientation = orientation; // 'vertical' 或 'horizontal'
+        this.slotLength = slotLength;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this._isDragging = false;
+
+        this._buildLever();
+        this._updateHandlePosition();
+    }
+
+    _buildLever() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        const oldLever = this.wrapperDiv.querySelector('.lever-container');
+        if (oldLever) oldLever.remove();
+
+        const isVertical = this.orientation === 'vertical';
+        const containerWidth = isVertical ? 60 : this.slotLength + 40;
+        const containerHeight = isVertical ? this.slotLength + 40 : 60;
+
+        this.leverContainer = document.createElement('div');
+        this.leverContainer.className = 'lever-container';
+        this.leverContainer.style.width = containerWidth + 'px';
+        this.leverContainer.style.height = containerHeight + 'px';
+
+        // 槽道
+        this.slotEl = document.createElement('div');
+        this.slotEl.className = 'lever-slot ' + (isVertical ? 'vertical' : 'horizontal');
+        if (isVertical) {
+            this.slotEl.style.height = this.slotLength + 'px';
+            this.slotEl.style.width = '22px';
+        } else {
+            this.slotEl.style.width = this.slotLength + 'px';
+            this.slotEl.style.height = '22px';
+        }
+        this.slotEl.style.position = 'relative';
+
+        // 刻度标记和标签
+        this._tickLabelEls = [];
+        const numPositions = this.positions.length;
+        const slotInnerLength = this.slotLength - 16;
+
+        for (let i = 0; i < numPositions; i++) {
+            const frac = numPositions > 1 ? i / (numPositions - 1) : 0.5;
+            const pos = 8 + frac * slotInnerLength;
+
+            // 刻度标记
+            const tickMark = document.createElement('div');
+            tickMark.className = 'lever-tick-mark';
+            if (isVertical) {
+                tickMark.style.top = pos + 'px';
+            } else {
+                tickMark.style.left = pos + 'px';
+            }
+            this.slotEl.appendChild(tickMark);
+
+            // 标签
+            const tickLabel = document.createElement('span');
+            tickLabel.className = 'lever-tick-label';
+            tickLabel.textContent = this.positions[i];
+            if (isVertical) {
+                tickLabel.style.top = pos + 'px';
+            } else {
+                tickLabel.style.left = pos + 'px';
+            }
+            if (i === this.currentPosition) {
+                tickLabel.classList.add('active');
+            }
+            this.slotEl.appendChild(tickLabel);
+            this._tickLabelEls.push(tickLabel);
+        }
+
+        // 手柄
+        this.handleEl = document.createElement('div');
+        this.handleEl.className = 'lever-handle';
+        this.slotEl.appendChild(this.handleEl);
+
+        this.leverContainer.appendChild(this.slotEl);
+        this.wrapperDiv.appendChild(this.leverContainer);
+
+        this._bindLeverEvents();
+    }
+
+    _getHandlePositionForIndex(posIndex) {
+        const numPositions = this.positions.length;
+        const slotInnerLength = this.slotLength - 16;
+        const frac = numPositions > 1 ? posIndex / (numPositions - 1) : 0.5;
+        return 8 + frac * slotInnerLength;
+    }
+
+    _getIndexForHandlePosition(handlePos) {
+        const numPositions = this.positions.length;
+        const slotInnerLength = this.slotLength - 16;
+        const frac = (handlePos - 8) / slotInnerLength;
+        return Math.round(clamp(frac, 0, 1) * (numPositions - 1));
+    }
+
+    _updateHandlePosition() {
+        if (!this.handleEl) return;
+        const pos = this._getHandlePositionForIndex(this.currentPosition);
+        const isVertical = this.orientation === 'vertical';
+        if (isVertical) {
+            this.handleEl.style.top = pos + 'px';
+            this.handleEl.style.left = '50%';
+            this.handleEl.style.transform = 'translate(-50%, -50%)';
+        } else {
+            this.handleEl.style.left = pos + 'px';
+            this.handleEl.style.top = '50%';
+            this.handleEl.style.transform = 'translate(-50%, -50%)';
+        }
+        // 更新标签高亮
+        if (this._tickLabelEls) {
+            this._tickLabelEls.forEach((el, i) => {
+                if (i === this.currentPosition) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+    }
+
+    _bindLeverEvents() {
+        if (!this.slotEl || !this.handleEl) return;
+        const isVertical = this.orientation === 'vertical';
+
+        const getLocalPosition = (e) => {
+            const rect = this.slotEl.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            if (isVertical) {
+                return clientY - rect.top;
+            } else {
+                return clientX - rect.left;
+            }
+        };
+
+        const updateFromPosition = (localPos) => {
+            const newIndex = this._getIndexForHandlePosition(clamp(localPos, 8, this.slotLength -
+                8));
+            if (newIndex !== this.currentPosition) {
+                this.currentPosition = newIndex;
+                this._updateHandlePosition();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    position: this.currentPosition,
+                    positionName: this.positions[this.currentPosition],
+                });
+            }
+        };
+
+        const onPointerDown = (e) => {
+            e.preventDefault();
+            this._isDragging = true;
+            const localPos = getLocalPosition(e);
+            updateFromPosition(localPos);
+            this.handleEl.style.cursor = 'grabbing';
+            document.body.style.cursor = 'grabbing';
+        };
+
+        const onPointerMove = (e) => {
+            if (!this._isDragging) return;
+            e.preventDefault();
+            const localPos = getLocalPosition(e);
+            updateFromPosition(localPos);
+        };
+
+        const onPointerUp = () => {
+            if (!this._isDragging) return;
+            this._isDragging = false;
+            this.handleEl.style.cursor = 'grab';
+            document.body.style.cursor = '';
+        };
+
+        this.slotEl.addEventListener('mousedown', onPointerDown);
+        this.slotEl.addEventListener('touchstart', onPointerDown, { passive: false });
+        this.handleEl.addEventListener('mousedown', onPointerDown);
+        this.handleEl.addEventListener('touchstart', onPointerDown, { passive: false });
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchend', onPointerUp);
+
+        // 滚轮
+        this.slotEl.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const numPositions = this.positions.length;
+            if (e.deltaY > 0) {
+                this.currentPosition = clamp(this.currentPosition + 1, 0, numPositions - 1);
+            } else {
+                this.currentPosition = clamp(this.currentPosition - 1, 0, numPositions - 1);
+            }
+            this._updateHandlePosition();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                position: this.currentPosition,
+                positionName: this.positions[this.currentPosition],
+            });
+        }, { passive: false });
+
+        this._leverCleanup = () => {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchend', onPointerUp);
+        };
+    }
+
+    getPosition() { return this.currentPosition; }
+    getPositionName() { return this.positions[this.currentPosition]; }
+
+    setPosition(posIndex) {
+        const newPos = clamp(posIndex, 0, this.positions.length - 1);
+        if (newPos !== this.currentPosition) {
+            this.currentPosition = newPos;
+            this._updateHandlePosition();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                position: this.currentPosition,
+                positionName: this.positions[this.currentPosition],
+            });
+        }
+    }
+
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._leverCleanup) this._leverCleanup();
+        super.destroy();
+    }
+}
+
+// ==================== 连续调节拨杆 ====================
+export class LeverContinuous extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            minValue = 0,
+            maxValue = 100,
+            initialValue = 50,
+            orientation = 'vertical',
+            slotLength = 100,
+            label = '',
+            labelPosition = 'top',
+            valueDisplayPrecision = 0,
+        } = options;
+        this.minValue = minValue;
+        this.maxValue = maxValue;
+        this.currentValue = clamp(initialValue, minValue, maxValue);
+        this.orientation = orientation;
+        this.slotLength = slotLength;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this.valueDisplayPrecision = valueDisplayPrecision;
+        this._isDragging = false;
+
+        this._buildLever();
+        this._updateHandlePosition();
+    }
+
+    _buildLever() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        const oldLever = this.wrapperDiv.querySelector('.lever-container');
+        if (oldLever) oldLever.remove();
+
+        const isVertical = this.orientation === 'vertical';
+        const containerWidth = isVertical ? 60 : this.slotLength + 40;
+        const containerHeight = isVertical ? this.slotLength + 40 : 60;
+
+        this.leverContainer = document.createElement('div');
+        this.leverContainer.className = 'lever-container';
+        this.leverContainer.style.width = containerWidth + 'px';
+        this.leverContainer.style.height = containerHeight + 'px';
+
+        // 槽道
+        this.slotEl = document.createElement('div');
+        this.slotEl.className = 'lever-slot ' + (isVertical ? 'vertical' : 'horizontal');
+        if (isVertical) {
+            this.slotEl.style.height = this.slotLength + 'px';
+            this.slotEl.style.width = '22px';
+        } else {
+            this.slotEl.style.width = this.slotLength + 'px';
+            this.slotEl.style.height = '22px';
+        }
+        this.slotEl.style.position = 'relative';
+
+        // 最小/最大值标签（显示在槽道两端）
+        const minLabel = document.createElement('span');
+        minLabel.className = 'lever-tick-label';
+        minLabel.textContent = this.minValue.toFixed(this.valueDisplayPrecision);
+        const maxLabel = document.createElement('span');
+        maxLabel.className = 'lever-tick-label';
+        maxLabel.textContent = this.maxValue.toFixed(this.valueDisplayPrecision);
+
+        if (isVertical) {
+            minLabel.style.top = '8px';
+            maxLabel.style.bottom = '8px';
+            minLabel.style.left = 'calc(100% + 10px)';
+            maxLabel.style.left = 'calc(100% + 10px)';
+        } else {
+            minLabel.style.left = '8px';
+            maxLabel.style.right = '8px';
+            minLabel.style.top = 'calc(100% + 8px)';
+            maxLabel.style.top = 'calc(100% + 8px)';
+        }
+        this.slotEl.appendChild(minLabel);
+        this.slotEl.appendChild(maxLabel);
+
+        // 当前值显示（手柄旁边）
+        this.valueDisplay = document.createElement('span');
+        this.valueDisplay.className = 'lever-tick-label active';
+        if (isVertical) {
+            this.valueDisplay.style.left = 'calc(100% + 10px)';
+        } else {
+            this.valueDisplay.style.top = 'calc(100% + 8px)';
+        }
+        this.slotEl.appendChild(this.valueDisplay);
+
+        // 手柄
+        this.handleEl = document.createElement('div');
+        this.handleEl.className = 'lever-handle';
+        this.slotEl.appendChild(this.handleEl);
+
+        this.leverContainer.appendChild(this.slotEl);
+        this.wrapperDiv.appendChild(this.leverContainer);
+
+        this._bindLeverEvents();
+    }
+
+    _getHandlePositionForValue(val) {
+        const isVertical = this.orientation === 'vertical';
+        const slotInnerLength = this.slotLength - 16;
+        const frac = (val - this.minValue) / (this.maxValue - this.minValue);
+        return 8 + frac * slotInnerLength;
+    }
+
+    _getValueForHandlePosition(handlePos) {
+        const slotInnerLength = this.slotLength - 16;
+        const frac = (handlePos - 8) / slotInnerLength;
+        return this.minValue + frac * (this.maxValue - this.minValue);
+    }
+
+    _updateHandlePosition() {
+        if (!this.handleEl) return;
+        const pos = this._getHandlePositionForValue(this.currentValue);
+        const isVertical = this.orientation === 'vertical';
+        if (isVertical) {
+            this.handleEl.style.top = pos + 'px';
+            this.handleEl.style.left = '50%';
+            this.handleEl.style.transform = 'translate(-50%, -50%)';
+        } else {
+            this.handleEl.style.left = pos + 'px';
+            this.handleEl.style.top = '50%';
+            this.handleEl.style.transform = 'translate(-50%, -50%)';
+        }
+        if (this.valueDisplay) {
+            this.valueDisplay.textContent = this.currentValue.toFixed(this.valueDisplayPrecision);
+            if (isVertical) {
+                this.valueDisplay.style.top = pos + 'px';
+                this.valueDisplay.style.transform = 'translateY(-50%)';
+            } else {
+                this.valueDisplay.style.left = pos + 'px';
+                this.valueDisplay.style.transform = 'translateX(-50%)';
+            }
+        }
+    }
+
+    _bindLeverEvents() {
+        if (!this.slotEl || !this.handleEl) return;
+        const isVertical = this.orientation === 'vertical';
+
+        const getLocalPosition = (e) => {
+            const rect = this.slotEl.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            if (isVertical) {
+                return clientY - rect.top;
+            } else {
+                return clientX - rect.left;
+            }
+        };
+
+        const updateFromPosition = (localPos) => {
+            const clampedPos = clamp(localPos, 8, this.slotLength - 8);
+            const newValue = clamp(
+                this._getValueForHandlePosition(clampedPos),
+                this.minValue,
+                this.maxValue
+            );
+            if (Math.abs(newValue - this.currentValue) > 0.0001) {
+                this.currentValue = newValue;
+                this._updateHandlePosition();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    value: this.currentValue,
+                });
+            }
+        };
+
+        const onPointerDown = (e) => {
+            e.preventDefault();
+            this._isDragging = true;
+            updateFromPosition(getLocalPosition(e));
+            this.handleEl.style.cursor = 'grabbing';
+            document.body.style.cursor = 'grabbing';
+        };
+
+        const onPointerMove = (e) => {
+            if (!this._isDragging) return;
+            e.preventDefault();
+            updateFromPosition(getLocalPosition(e));
+        };
+
+        const onPointerUp = () => {
+            if (!this._isDragging) return;
+            this._isDragging = false;
+            this.handleEl.style.cursor = 'grab';
+            document.body.style.cursor = '';
+        };
+
+        this.slotEl.addEventListener('mousedown', onPointerDown);
+        this.slotEl.addEventListener('touchstart', onPointerDown, { passive: false });
+        this.handleEl.addEventListener('mousedown', onPointerDown);
+        this.handleEl.addEventListener('touchstart', onPointerDown, { passive: false });
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchend', onPointerUp);
+
+        this.slotEl.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const range = this.maxValue - this.minValue;
+            const step = range / 200;
+            const delta = e.deltaY > 0 ? -step : step;
+            const newValue = clamp(this.currentValue + delta, this.minValue, this.maxValue);
+            if (Math.abs(newValue - this.currentValue) > 0.0001) {
+                this.currentValue = newValue;
+                this._updateHandlePosition();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    value: this.currentValue,
+                });
+            }
+        }, { passive: false });
+
+        this._leverCleanup = () => {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchend', onPointerUp);
+        };
+    }
+
+    getValue() { return this.currentValue; }
+
+    setValue(val) {
+        const newVal = clamp(val, this.minValue, this.maxValue);
+        if (Math.abs(newVal - this.currentValue) > 0.0001) {
+            this.currentValue = newVal;
+            this._updateHandlePosition();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
+        }
+    }
+
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._leverCleanup) this._leverCleanup();
+        super.destroy();
+    }
+}
+
+// ==================== 无限调节旋钮 ====================
+export class KnobInfinite extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            initialValue = 0,
+            valuePerRevolution = 100, // 每360度数值变化量
+            diameter = 50,
+            label = '',
+            labelPosition = 'top',
+            valueDisplayPrecision = 0,
+        } = options;
+        this.currentValue = initialValue;
+        this.valuePerRevolution = valuePerRevolution;
+        this.diameter = diameter;
+        this.labelText = label;
+        this.labelPosition = labelPosition;
+        this.valueDisplayPrecision = valueDisplayPrecision;
+        this._isDragging = false;
+        this._lastAngle = null; // 上次记录的鼠标角度（度）
+
+        this._buildKnob();
+        this._updateKnobRotation();
+    }
+
+    _buildKnob() {
+        if (this.labelDiv) {
+            this.labelDiv.textContent = this.labelText;
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+        } else if (this.labelText) {
+            this.labelDiv = document.createElement('div');
+            this.labelDiv.className = 'component-label label-' + this.labelPosition;
+            this.labelDiv.textContent = this.labelText;
+            this.wrapperDiv.appendChild(this.labelDiv);
+        }
+
+        const oldKnob = this.wrapperDiv.querySelector('.knob-container');
+        if (oldKnob) oldKnob.remove();
+
+        const containerSize = this.diameter + 36;
+        this.knobContainer = document.createElement('div');
+        this.knobContainer.className = 'knob-container';
+        this.knobContainer.style.width = containerSize + 'px';
+        this.knobContainer.style.height = containerSize + 'px';
+
+        // 当前值显示（上方居中）
+        this.valueDisplay = document.createElement('span');
+        this.valueDisplay.className = 'knob-tick-label active';
+        this.valueDisplay.style.left = '50%';
+        this.valueDisplay.style.top = (containerSize / 2 - this.diameter / 2 - 10) + 'px';
+        this.valueDisplay.style.transform = 'translateX(-50%)';
+        this.valueDisplay.textContent = this.currentValue.toFixed(this.valueDisplayPrecision);
+        this.knobContainer.appendChild(this.valueDisplay);
+
+        // 旋钮主体
+        this.knobOuter = document.createElement('div');
+        this.knobOuter.className = 'knob-outer';
+        this.knobOuter.style.width = this.diameter + 'px';
+        this.knobOuter.style.height = this.diameter + 'px';
+        this.knobOuter.style.position = 'absolute';
+        this.knobOuter.style.left = (containerSize / 2 - this.diameter / 2) + 'px';
+        this.knobOuter.style.top = (containerSize / 2 - this.diameter / 2) + 'px';
+
+        const innerSize = this.diameter * 0.55;
+        this.knobInner = document.createElement('div');
+        this.knobInner.className = 'knob-inner';
+        this.knobInner.style.width = innerSize + 'px';
+        this.knobInner.style.height = innerSize + 'px';
+
+        this.indicatorLine = document.createElement('div');
+        this.indicatorLine.className = 'knob-indicator';
+        const indicatorHeight = this.diameter * 0.38;
+        const indicatorWidth = Math.max(2, this.diameter * 0.05);
+        this.indicatorLine.style.height = indicatorHeight + 'px';
+        this.indicatorLine.style.width = indicatorWidth + 'px';
+        this.indicatorLine.style.bottom = '50%';
+        this.indicatorLine.style.left = '50%';
+        this.indicatorLine.style.marginLeft = (-indicatorWidth / 2) + 'px';
+        this.indicatorLine.style.transformOrigin = 'bottom center';
+        this.indicatorLine.style.borderRadius = (indicatorWidth / 2) + 'px';
+
+        this.knobOuter.appendChild(this.indicatorLine);
+        this.knobOuter.appendChild(this.knobInner);
+        this.knobContainer.appendChild(this.knobOuter);
+        this.wrapperDiv.appendChild(this.knobContainer);
+
+        this._bindKnobEvents();
+    }
+
+    _updateKnobRotation() {
+        // 根据累计角度旋转指示器（无上限，但CSS旋转角度可以任意大）
+        const totalAngleDeg = (this.currentValue / this.valuePerRevolution) * 360;
+        if (this.indicatorLine) {
+            this.indicatorLine.style.transform = `rotate(${totalAngleDeg}deg)`;
+        }
+        if (this.valueDisplay) {
+            this.valueDisplay.textContent = this.currentValue.toFixed(this.valueDisplayPrecision);
+        }
+    }
+
+    _bindKnobEvents() {
+        if (!this.knobContainer) return;
+
+        const getAngleFromEvent = (e) => {
+            const rect = this.knobContainer.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const dx = clientX - cx;
+            const dy = clientY - cy;
+            let angleRad = Math.atan2(dy, dx);
+            let angleDeg = angleRad * 180 / Math.PI + 90;
+            if (angleDeg < 0) angleDeg += 360;
+            return angleDeg;
+        };
+
+        // 计算最短角度差（-180 ~ 180）
+        const angleDiff = (current, last) => {
+            let diff = current - last;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            return diff;
+        };
+
+        const onPointerDown = (e) => {
+            e.preventDefault();
+            this._isDragging = true;
+            this._lastAngle = getAngleFromEvent(e);
+            this.knobContainer.style.cursor = 'grabbing';
+            document.body.style.cursor = 'grabbing';
+        };
+
+        const onPointerMove = (e) => {
+            if (!this._isDragging || this._lastAngle === null) return;
+            e.preventDefault();
+            const currentAngle = getAngleFromEvent(e);
+            const deltaDeg = angleDiff(currentAngle, this._lastAngle);
+            if (Math.abs(deltaDeg) > 0.001) {
+                const deltaValue = (deltaDeg / 360) * this.valuePerRevolution;
+                this.currentValue += deltaValue;
+                this._updateKnobRotation();
+                this._emit('change', {
+                    cmpName: this.cmpName,
+                    value: this.currentValue,
+                });
+            }
+            this._lastAngle = currentAngle;
+        };
+
+        const onPointerUp = () => {
+            if (!this._isDragging) return;
+            this._isDragging = false;
+            this._lastAngle = null;
+            this.knobContainer.style.cursor = 'grab';
+            document.body.style.cursor = '';
+        };
+
+        this.knobContainer.addEventListener('mousedown', onPointerDown);
+        this.knobContainer.addEventListener('touchstart', onPointerDown, { passive: false });
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchend', onPointerUp);
+
+        // 滚轮支持
+        this.knobContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const step = this.valuePerRevolution / 360; // 每度对应值
+            const delta = e.deltaY > 0 ? -step * 15 : step * 15; // 一次滚轮约15度
+            this.currentValue += delta;
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
+        }, { passive: false });
+
+        this._knobCleanup = () => {
+            window.removeEventListener('mousemove', onPointerMove);
+            window.removeEventListener('touchmove', onPointerMove);
+            window.removeEventListener('mouseup', onPointerUp);
+            window.removeEventListener('touchend', onPointerUp);
+        };
+    }
+
+    getValue() { return this.currentValue; }
+
+    setValue(val) {
+        if (Math.abs(val - this.currentValue) > 0.0001) {
+            this.currentValue = val;
+            this._updateKnobRotation();
+            this._emit('change', {
+                cmpName: this.cmpName,
+                value: this.currentValue,
+            });
+        }
+    }
+
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._knobCleanup) this._knobCleanup();
+        super.destroy();
+    }
+}
+
+// ==================== 全局 updateDisplay 函数 ====================
+export const updateDisplay = function(params) {
+    if (!params || !params.cmpName) {
+        console.warn('updateDisplay: 缺少 cmpName 参数');
+        return;
+    }
+    const component = getComponentByName(params.cmpName);
+    if (!component) {
+        console.warn(`updateDisplay: 未找到组件 "${params.cmpName}"`);
+        return;
+    }
+    if (typeof component.updateLights === 'function') {
+        component.updateLights(params.upperLight, params.lowerLight);
+    } else {
+        console.warn(`updateDisplay: 组件 "${params.cmpName}" 不支持指示灯更新`);
+    }
+};
+
+// ==================== 导出 ====================

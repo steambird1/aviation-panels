@@ -1,0 +1,92 @@
+.reserved_body {
+    gap: 16px;
+}
+
+.info-panel {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    background: #16213e;
+    border-radius: 12px;
+    padding: 12px 24px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.info-panel .label {
+    color: #8892b0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-panel .value {
+    font-weight: 600;
+    font-size: 18px;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+
+.info-panel .coord-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.status-dot.idle {
+    background: #4caf50;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+}
+
+.status-dot.operating {
+    background: #f44336;
+    box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+    }
+    50% {
+        box-shadow: 0 0 18px rgba(244, 67, 54, 0.9);
+    }
+}
+
+.hint-text {
+    color: #8892b0;
+    font-size: 12px;
+    text-align: center;
+}
+
+/*
+body {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			background: #1a1a2e;
+			font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+			gap: 16px;
+			user-select: none;
+			-webkit-user-select: none;
+		}
+*/
