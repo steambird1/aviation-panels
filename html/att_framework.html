@@ -29,8 +29,8 @@
             </div>
 
             <div class="control-group">
-                <label>实际横滚角 <span class="value-display" id="rollValue">-8°</span></label>
-                <input type="range" id="rollSlider" min="-60" max="60" value="-8" step="1">
+                <label>实际横滚角 <span class="value-display" id="rollValue">0°</span></label>
+                <input type="range" id="rollSlider" min="-60" max="60" value="0" step="1">
             </div>
 
             <div class="control-group">
@@ -45,12 +45,12 @@
 
             <div class="toggle-row">
                 <button class="toggle-btn active" id="toggleFd">显示飞行指引</button>
-                <span class="hint-text">水平杆跟随俯仰偏差，垂直杆跟随横滚偏差</span>
+                <span class="hint-text">水平指示线随俯仰偏差上下平移，竖直指示线随横滚偏差左右平移</span>
             </div>
-            <div class="hint-text">指引杆位置由「目标角 − 实际角」决定，偏差过大时会限制在仪表范围内。</div>
+            <div class="hint-text">指引线位置由「目标角 − 实际角」决定，比例与俯仰刻度一致，并按 min(d, limit) 限制。</div>
 
             <div class="control-group">
-                <label>指引杆颜色</label>
+                <label>指引线颜色</label>
                 <div class="color-presets" id="fdColorPresets">
                     <span class="color-preset active" data-color="#FFD54F" style="background:#FFD54F;" title="琥珀"></span>
                     <span class="color-preset" data-color="#7CFC8A" style="background:#7CFC8A;" title="绿色"></span>
@@ -152,7 +152,7 @@
 
             btnReset.addEventListener('click', () => {
                 pitchSlider.value = 4;
-                rollSlider.value = -8;
+                rollSlider.value = 0;
                 fdPitchSlider.value = 12;
                 fdRollSlider.value = 10;
                 showFlightDirector = true;
@@ -171,7 +171,7 @@
 
             console.log('✈️ 姿态仪已就绪 | Attitude Indicator Ready');
             console.log('   左侧：普通姿态仪');
-            console.log('   右侧：飞行指引（目标姿态与实际姿态偏差驱动两根十字指引杆）');
+            console.log('   右侧：飞行指引（水平/竖直指引线按目标姿态与实际姿态的偏差平移）');
             console.log('   隐藏飞行指引时，右侧仪表与左侧一致');
         });
     </script>

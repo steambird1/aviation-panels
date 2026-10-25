@@ -5,9 +5,9 @@ export class AttitudeIndication {
    * @param {string} [options.flightDirectorColor] - 飞行指引杆颜色
    * @param {number} [options.flightDirectorPitchLimit] - 俯仰指引最大偏差（度）
    * @param {number} [options.flightDirectorRollLimit] - 横滚指引最大偏差（度）
-   * @param {number} [options.flightDirectorRollScale] - 横滚偏差每度对应像素
-   * @param {number} [options.flightDirectorBarLength] - 指引杆长度（像素）
-   * @param {number} [options.flightDirectorBarThickness] - 指引杆粗细（像素）
+   * @param {number} [options.flightDirectorRollScale] - 横滚偏差每度对应像素（默认与俯仰刻度一致）
+   * @param {number} [options.flightDirectorBarLength] - 指引线长度（像素）
+   * @param {number} [options.flightDirectorBarThickness] - 指引线粗细（像素）
    * @param {number} [options.horizonMargin] - 大俯仰时仍保留的天空/地面边带高度（像素）
    */
   constructor(canvas, options = {}) {
@@ -22,11 +22,11 @@ export class AttitudeIndication {
 
     // ---- 飞行指引（十字指引杆）参数 ----
     this.flightDirectorColor = options.flightDirectorColor || '#FFD54F';
-    this.flightDirectorPitchLimit = options.flightDirectorPitchLimit ?? 14;
-    this.flightDirectorRollLimit = options.flightDirectorRollLimit ?? 26;
-    this.flightDirectorRollScale = options.flightDirectorRollScale ?? 1.5;
-    this.flightDirectorBarLength = options.flightDirectorBarLength ?? 36;
-    this.flightDirectorBarThickness = options.flightDirectorBarThickness ?? 4;
+    this.flightDirectorPitchLimit = options.flightDirectorPitchLimit ?? 15;
+    this.flightDirectorRollLimit = options.flightDirectorRollLimit ?? 15;
+    this.flightDirectorRollScale = options.flightDirectorRollScale ?? this.pitchScale;
+    this.flightDirectorBarLength = options.flightDirectorBarLength ?? 72;
+    this.flightDirectorBarThickness = options.flightDirectorBarThickness ?? 3;
     this.horizonMargin = Math.min(
       Math.max(Number(options.horizonMargin ?? 10), 2),
       this.radius * 0.45
@@ -281,8 +281,10 @@ export class AttitudeIndication {
   }
 
   /**
-   * 绘制两根十字飞行指引杆。
-   * 水平杆随俯仰偏差上下移动，垂直杆随横滚偏差左右移动。
+   * 绘制两根飞行指引线。
+   * 水平指示线保持水平，仅按俯仰偏差上下平移；
+   * 竖直指示线保持竖直，仅按横滚偏差左右平移。
+   * 两条线的长度都略长于俯仰主刻度线，位移比例与俯仰刻度一致。
    */
   _drawFlightDirector(fd) {
     const ctx = this.ctx;
@@ -291,39 +293,32 @@ export class AttitudeIndication {
     const length = this.flightDirectorBarLength;
     const thickness = this.flightDirectorBarThickness;
     const half = length / 2;
-    const capLength = 8;
-    const capThickness = 2.5;
 
-    // 限制指引杆中心位置，避免杆体超出仪表圆
-    const maxOffset = this.radius - half - capLength / 2 - 1;
-    const barX = cx + this._clamp(
-      fd.rollError * this.flightDirectorRollScale,
-      -maxOffset,
-      maxOffset
-    );
-    const barY = cy + this._clamp(
+    // 指引线中心允许的活动范围
+    const maxOffset = this.radius - 6;
+    const lineY = cy + this._clamp(
       -fd.pitchError * this.pitchScale,
       -maxOffset,
       maxOffset
     );
+    const lineX = cx + this._clamp(
+      fd.rollError * this.flightDirectorRollScale,
+      -maxOffset,
+      maxOffset
+    );
 
-    const mainSegments = [
-      [barX - half, barY, barX + half, barY],
-      [barX, barY - half, barX, barY + half],
-    ];
-    const capSegments = [
-      [barX - half, barY - capLength / 2, barX - half, barY + capLength / 2],
-      [barX + half, barY - capLength / 2, barX + half, barY + capLength / 2],
-      [barX - capLength / 2, barY - half, barX + capLength / 2, barY - half],
-      [barX - capLength / 2, barY + half, barX + capLength / 2, barY + half],
+    // 水平线以 cx 为中点上下平移，竖直线以 cy 为中点左右平移
+    const lines = [
+      [cx - half, lineY, cx + half, lineY],
+      [lineX, cy - half, lineX, cy + half],
     ];
 
-    const paint = (segments, lineWidth, strokeStyle, glow = false) => {
+    const paint = (lineWidth, strokeStyle, glow = false) => {
       ctx.strokeStyle = strokeStyle;
       ctx.lineWidth = lineWidth;
       ctx.shadowBlur = glow ? 4 : 0;
       ctx.shadowColor = glow ? fd.color : 'transparent';
-      segments.forEach(([x1, y1, x2, y2]) => {
+      lines.forEach(([x1, y1, x2, y2]) => {
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
@@ -335,12 +330,8 @@ export class AttitudeIndication {
     ctx.lineCap = 'round';
 
     // 深色描边保证在天空/地面背景上都有足够对比度
-    paint(mainSegments, thickness + 3, 'rgba(6, 8, 12, 0.9)');
-    paint(capSegments, capThickness + 2.5, 'rgba(6, 8, 12, 0.9)');
-
-    // 彩色指引杆
-    paint(mainSegments, thickness, fd.color, true);
-    paint(capSegments, capThickness, fd.color, true);
+    paint(thickness + 2.5, 'rgba(6, 8, 12, 0.9)');
+    paint(thickness, fd.color, true);
 
     ctx.restore();
   }
