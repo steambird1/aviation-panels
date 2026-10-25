@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机导航显示仪表</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #0d0d1a;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .instrument-container {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .instrument-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .instrument-label {
+            color: #8899aa;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        canvas {
+            border-radius: 8px;
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        .controls {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 20px 28px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: center;
+            align-items: flex-end;
+            max-width: 700px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .control-group label {
+            color: #8899aa;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .control-group input {
+            width: 80px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: #0d0d1a;
+            color: #e0e0e0;
+            font-family: inherit;
+            font-size: 14px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+
+        .control-group input:focus {
+            outline: none;
+            border-color: #4da6ff;
+            box-shadow: 0 0 0 2px rgba(77, 166, 255, 0.15);
+        }
+
+        .btn {
+            padding: 9px 18px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: #1a1a2e;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            background: #252540;
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        .btn.active {
+            background: #2a3a50;
+            border-color: #4da6ff;
+            color: #4da6ff;
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+            .control-group input {
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .instrument-container {
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="instrument-container">
+        <div class="instrument-panel">
+            <span class="instrument-label">导航显示仪表</span>
+            <canvas id="navDisplay" width="176" height="176"></canvas>
+        </div>
+    </div>
+
+    <div class="controls" id="controls">
+        <div class="control-group">
+            <label>距离 (navDist)</label>
+            <input type="number" id="inpNavDist" value="12.5" step="0.1" min="0" max="120" placeholder="null=-">
+        </div>
+        <div class="control-group">
+            <label>航迹 (course)</label>
+            <input type="number" id="inpCourse" value="45" min="0" max="359" step="1">
+        </div>
+        <div class="control-group">
+            <label>航向 (heading)</label>
+            <input type="number" id="inpHeading" value="30" min="0" max="359" step="1">
+        </div>
+        <div class="control-group">
+            <label>航向游标 (hSel)</label>
+            <input type="number" id="inpHeadingSel" value="60" min="0" max="359" step="1">
+        </div>
+        <div class="control-group">
+            <label>偏离量 (devOffset)</label>
+            <input type="number" id="inpDevOffset" value="0.0" step="0.1" min="-2.5" max="2.5">
+        </div>
+        <button class="btn" id="btnRandom" title="随机生成数据">🎲 随机</button>
+        <button class="btn" id="btnAnimate" title="自动变化航向">▶ 动画</button>
+        <button class="btn" id="btnNullDist" title="切换距离为 null">📡 --.-</button>
+    </div>
+
+    <script>
+        /**
+         * 飞机导航显示仪表
+         * 构造时接收一个 176×176 的 canvas DOM 对象
+         * 调用 updateDisplay 更新显示
+         */
+        class NavigationDisplay {
+            /**
+             * @param {HTMLCanvasElement} canvas - 176×176 像素的 canvas 元素
+             */
+            constructor(canvas) {
+                if (!canvas || !(canvas instanceof HTMLCanvasElement)) {
+                    throw new Error('NavigationDisplay 需要传入一个 canvas DOM 对象');
+                }
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+
+                // 固定尺寸
+                this.W = 176;
+                this.H = 176;
+                canvas.width = this.W;
+                canvas.height = this.H;
+
+                // --- 布局参数 ---
+                this.cx = 88;               // 罗盘圆心 X
+                this.cy = 112;              // 罗盘圆心 Y（略微下移）
+                this.R = 60;                // 罗盘半径（原 56 → 60，增大）
+                this.compassDiam = this.R * 2; // 120
+
+                // CDI 参数（基于新罗盘尺寸调整）
+                this.l = 106;               // AB 总长（略小于罗盘直径 120）
+                this.a = 66.25;             // CD 长度 = 5/8 * l
+                this.unitLen = this.l / 4;  // 单位长度 = 26.5
+
+                // 颜色主题
+                this.colors = {
+                    bgOuter: '#12121f',
+                    borderOuter: '#3a3a52',
+                    compassBg: '#0a0a16',
+                    compassRing: '#4a4a60',
+                    tickMinor: '#c0c0d0',
+                    tickMajor: '#e8e8f0',
+                    textDigit: '#e0e0ec',
+                    textInfo: '#c8e8ff',
+                    textInfoDim: '#556678',
+                    cdiLine: '#f0f0f0',
+                    cdiGhost: '#8899aa',
+                    headingSel: '#ff9900',
+                    dotScale: '#d0d0e0',
+                    dotCenter: '#ffffff',
+                };
+
+                // 初始默认数据
+                this._data = {
+                    navDist: null,
+                    course: 0,
+                    heading: 0,
+                    headingSelection: 0,
+                    devOffset: 0,
+                };
+            }
+
+            /**
+             * 更新仪表显示
+             * @param {Object} params
+             * @param {number|null} params.navDist      - 距离导航点的距离（null 显示 --.-，>99.9 显示 99.9）
+             * @param {number}      params.course       - 当前所选航迹 (0~359)
+             * @param {number}      params.heading      - 当前航向 (0~359)
+             * @param {number}      params.headingSelection - 航向选择游标角度 (0~359)
+             * @param {number}      params.devOffset    - 航道偏离量（单位：单位长度）
+             */
+            updateDisplay({ navDist = null, course = 0, heading = 0, headingSelection = 0, devOffset = 0 } = {}) {
+                this._data = {
+                    navDist: navDist,
+                    course: ((course % 360) + 360) % 360,
+                    heading: ((heading % 360) + 360) % 360,
+                    headingSelection: ((headingSelection % 360) + 360) % 360,
+                    devOffset: devOffset,
+                };
+                this._draw();
+            }
+
+            // ==================== 绘制主入口 ====================
+            _draw() {
+                const ctx = this.ctx;
+                const W = this.W;
+                const H = this.H;
+                const d = this._data;
+
+                // 清屏
+                ctx.clearRect(0, 0, W, H);
+
+                // --- 1. 方形仪表外轮廓背景 ---
+                this._drawOuterFrame();
+
+                // --- 2. 左上角：距离 ---
+                this._drawNavDist(d.navDist);
+
+                // --- 3. 右上角：航迹 ---
+                this._drawCourse(d.course);
+
+                // --- 4. 罗盘（含刻度、数字、headingSelection 游标） ---
+                this._drawCompass(d.heading, d.headingSelection);
+
+                // --- 5. 航道偏离指示 (CDI)，始终正对航迹 ---
+                this._drawCDI(d.course, d.heading, d.devOffset);
+            }
+
+            // ==================== 方形外轮廓 ====================
+            _drawOuterFrame() {
+                const ctx = this.ctx;
+                const margin = 3;
+                const x = margin;
+                const y = margin;
+                const w = this.W - 2 * margin;
+                const h = this.H - 2 * margin;
+                const radius = 6;
+
+                // 填充背景
+                ctx.fillStyle = this.colors.bgOuter;
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + w - radius, y);
+                ctx.arcTo(x + w, y, x + w, y + radius, radius);
+                ctx.lineTo(x + w, y + h - radius);
+                ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+                ctx.lineTo(x + radius, y + h);
+                ctx.arcTo(x, y + h, x, y + h - radius, radius);
+                ctx.lineTo(x, y + radius);
+                ctx.arcTo(x, y, x + radius, y, radius);
+                ctx.closePath();
+                ctx.fill();
+
+                // 边框
+                ctx.strokeStyle = this.colors.borderOuter;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 内部微妙高光
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x + radius + 1, y + 1.5);
+                ctx.lineTo(x + w - radius - 1, y + 1.5);
+                ctx.stroke();
+            }
+
+            // ==================== 左上角：距离 ====================
+            _drawNavDist(navDist) {
+                const ctx = this.ctx;
+                const x = 22;
+                const y = 28;
+                const fontSize = 15;
+
+                let text;
+                if (navDist === null || navDist === undefined) {
+                    text = '--.-';
+                } else if (navDist > 99.9) {
+                    text = '99.9';
+                } else {
+                    text = navDist.toFixed(1);
+                    // 确保至少 3 个字符宽度（如 "5.3" 已经是 3 字符，"0.0" 也是 3 字符）
+                    // 对于 <10 的值，toFixed(1) 产生如 "5.3"（3字符），符合"共3位数字显示"
+                    // 对于 >=10 的值，如 "42.7"（4字符），也接受
+                }
+
+                // 小标签
+                ctx.fillStyle = this.colors.textInfoDim;
+                ctx.font = '8px "Consolas","Monaco",monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('DIST', x, y - fontSize - 2);
+
+                // 数值
+                ctx.fillStyle = this.colors.textInfo;
+                ctx.font = `${fontSize}px "Consolas","Monaco",monospace`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(text, x, y - fontSize + 2);
+
+                // 单位
+                ctx.fillStyle = this.colors.textInfoDim;
+                ctx.font = '7px "Consolas","Monaco",monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText('NM', x + ctx.measureText(text).width + 4, y - fontSize + 6);
+            }
+
+            // ==================== 右上角：航迹 ====================
+            _drawCourse(course) {
+                const ctx = this.ctx;
+                const x = this.W - 22;
+                const y = 28;
+                const fontSize = 15;
+
+                const text = String(Math.round(course) % 360).padStart(3, '0');
+
+                // 小标签
+                ctx.fillStyle = this.colors.textInfoDim;
+                ctx.font = '8px "Consolas","Monaco",monospace';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('CRS', x, y - fontSize - 2);
+
+                // 数值
+                ctx.fillStyle = this.colors.textInfo;
+                ctx.font = `${fontSize}px "Consolas","Monaco",monospace`;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'top';
+                ctx.fillText(text, x, y - fontSize + 2);
+
+                // 度符号
+                ctx.fillStyle = this.colors.textInfoDim;
+                ctx.font = '9px "Consolas","Monaco",monospace';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'top';
+                ctx.fillText('°', x - ctx.measureText(text).width - 2, y - fontSize + 4);
+            }
+
+            // ==================== 罗盘 ====================
+            _drawCompass(heading, headingSelection) {
+                const ctx = this.ctx;
+                const cx = this.cx;
+                const cy = this.cy;
+                const R = this.R;
+
+                // --- 罗盘背景圆 ---
+                // 外发光效果
+                const glowGrad = ctx.createRadialGradient(cx, cy, R - 2, cx, cy, R + 8);
+                glowGrad.addColorStop(0, 'rgba(30,30,50,0)');
+                glowGrad.addColorStop(0.85, 'rgba(20,20,40,0.3)');
+                glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = glowGrad;
+                ctx.beginPath();
+                ctx.arc(cx, cy, R + 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 罗盘填充
+                const compassGrad = ctx.createRadialGradient(cx, cy, R * 0.25, cx, cy, R);
+                compassGrad.addColorStop(0, '#1c1c30');
+                compassGrad.addColorStop(1, '#0a0a16');
+                ctx.fillStyle = compassGrad;
+                ctx.beginPath();
+                ctx.arc(cx, cy, R, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 罗盘圆环边框
+                ctx.strokeStyle = this.colors.compassRing;
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.arc(cx, cy, R, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 内圈细线
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.arc(cx, cy, R - 1.5, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // --- 绘制旋转后的刻度线和数字 ---
+                // heading 始终在正上方（canvas 角度 -π/2）
+                const headingRad = heading * Math.PI / 180;
+                const cosH = Math.cos(headingRad);
+                const sinH = Math.sin(headingRad);
+
+                for (let markDeg = 0; markDeg < 360; markDeg += 10) {
+                    const isMajor = (markDeg % 30 === 0);
+                    const markRad = markDeg * Math.PI / 180;
+
+                    // 罗盘旋转：mark 在屏幕上的 canvas 角度
+                    // canvas_angle = -π/2 + (markDeg - heading) * π/180
+                    const screenAngle = -Math.PI / 2 + (markDeg - heading) * Math.PI / 180;
+                    const cosA = Math.cos(screenAngle);
+                    const sinA = Math.sin(screenAngle);
+
+                    // 刻度线起点（罗盘圆上）
+                    const x1 = cx + R * cosA;
+                    const y1 = cy + R * sinA;
+
+                    // 刻度线终点
+                    const innerR = isMajor ? R - 10 : R - 5.5;
+                    const x2 = cx + innerR * cosA;
+                    const y2 = cy + innerR * sinA;
+
+                    ctx.strokeStyle = isMajor ? this.colors.tickMajor : this.colors.tickMinor;
+                    ctx.lineWidth = isMajor ? 1.4 : 0.7;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+
+                    // 每 30 度绘制数字（只写前两位）
+                    if (isMajor) {
+                        const digitStr = String(Math.round(markDeg) % 360).padStart(3, '0').substring(0, 2);
+                        const textR = R - 19;
+                        const tx = cx + textR * cosA;
+                        const ty = cy + textR * sinA;
+
+                        ctx.save();
+                        ctx.translate(tx, ty);
+                        // 数字径向排列，顶部朝向圆心
+                        const textRotation = screenAngle + Math.PI / 2;
+                        ctx.rotate(textRotation);
+                        ctx.fillStyle = this.colors.textDigit;
+                        ctx.font = '10px "Consolas","Monaco",monospace';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(digitStr, 0, 0);
+                        ctx.restore();
+                    }
+                }
+
+                // --- 航向参考标记（固定顶部小三角，在罗盘内侧） ---
+                const triSize = 5;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - R + 1);
+                ctx.lineTo(cx - triSize, cy - R + triSize + 3);
+                ctx.lineTo(cx + triSize, cy - R + triSize + 3);
+                ctx.closePath();
+                ctx.fill();
+
+                // --- headingSelection 游标（罗盘外圈） ---
+                this._drawHeadingSelection(heading, headingSelection);
+            }
+
+            /**
+             * 航向选择游标 - 在罗盘外圈上运动
+             */
+            _drawHeadingSelection(heading, headingSelection) {
+                const ctx = this.ctx;
+                const cx = this.cx;
+                const cy = this.cy;
+                const R = this.R;
+
+                // headingSelection 是罗盘上的绝对角度
+                // 罗盘旋转后，它在屏幕上的角度
+                const screenAngle = -Math.PI / 2 + (headingSelection - heading) * Math.PI / 180;
+                const cosA = Math.cos(screenAngle);
+                const sinA = Math.sin(screenAngle);
+
+                // 游标在罗盘圆外侧，适当内收以避免超出画布
+                const tipR = this.R + 2;     // 三角尖端距圆心（原 this.R + 3.5）
+                const baseR = this.R + 7;    // 三角底边距圆心（原 this.R + 10）
+                const halfWidth = 4.5;       // 三角半宽（原 5.5）
+
+                const tipX = cx + tipR * cosA;
+                const tipY = cy + tipR * sinA;
+
+                // 底边中点
+                const baseMidX = cx + baseR * cosA;
+                const baseMidY = cy + baseR * sinA;
+
+                // 底边两端（垂直于径向）
+                const perpX = -sinA;
+                const perpY = cosA;
+
+                const baseX1 = baseMidX + halfWidth * perpX;
+                const baseY1 = baseMidY + halfWidth * perpY;
+                const baseX2 = baseMidX - halfWidth * perpX;
+                const baseY2 = baseMidY - halfWidth * perpY;
+
+                // 绘制游标三角形
+                ctx.fillStyle = this.colors.headingSel;
+                ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(baseX1, baseY1);
+                ctx.lineTo(baseX2, baseY2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // 游标光晕
+                ctx.fillStyle = 'rgba(255,153,0,0.25)';
+                ctx.beginPath();
+                ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // ==================== 航道偏离指示 (CDI) ====================
+            /**
+             * CDI 始终正对航迹 course（地理方向），不随 heading 旋转
+             * 结构：
+             *   - AB 线段沿 course 方向，挖去中间 CD 段
+             *   - 垂直平分线上 5 个刻度点
+             *   - CD 沿正方向（course 方向）平移 devOffset 单位
+             */
+            _drawCDI(course, heading, devOffset) {
+                const ctx = this.ctx;
+                const cx = this.cx;
+                const cy = this.cy;
+                const l = this.l;
+                const a = this.a;
+                const unitLen = this.unitLen;
+
+                // course 方向在 canvas 中的角度
+                const courseRad = course * Math.PI / 180;
+                // canvas 方向向量（罗盘 0°=北=顶部 => canvas -π/2）
+                const canvasAngle = -Math.PI / 2 + courseRad;
+                const cosC = Math.cos(canvasAngle);
+                const sinC = Math.sin(canvasAngle);
+
+                // AB 方向单位向量（course 方向）
+                const ux = cosC;
+                const uy = sinC;
+
+                // 垂直平分线方向（course+90°，即垂直于 AB）
+                const perpAngle = canvasAngle + Math.PI / 2;
+                const px = Math.cos(perpAngle);
+                const py = Math.sin(perpAngle);
+
+                // 正方向 = course 方向（从 A 顺时针遇到的第一个交点 Q 在 course 方向）
+                const posDirX = ux;
+                const posDirY = uy;
+
+                // --- AB 的端点 ---
+                // A 端靠近航迹方向（course 方向，罗盘边缘侧）
+                const Ax = cx + (l / 2) * ux;
+                const Ay = cy + (l / 2) * uy;
+                // B 端在对面
+                const Bx = cx - (l / 2) * ux;
+                const By = cy - (l / 2) * uy;
+
+                // --- CD 原始位置（在 AB 中点即圆心处，长度 a） ---
+                const C0x = cx + (a / 2) * ux;
+                const C0y = cy + (a / 2) * uy;
+                const D0x = cx - (a / 2) * ux;
+                const D0y = cy - (a / 2) * uy;
+
+                // --- CD 平移后的位置 ---
+                const offsetDist = devOffset * unitLen;
+                // CD 沿垂直于 AB 的方向（即垂直平分线方向）平移
+                const Cpx = C0x + offsetDist * px;
+                const Cpy = C0y + offsetDist * py;
+                const Dpx = D0x + offsetDist * px;
+                const Dpy = D0y + offsetDist * py;
+
+                // --- 绘制：垂直平分线上的 5 个刻度点 ---
+                // 5 个点均匀分布，总长度 l，间距 unitLen，P（第3个点）在圆心
+                for (let i = -2; i <= 2; i++) {
+                    const dotX = cx + i * unitLen * px;
+                    const dotY = cy + i * unitLen * py;
+                    const isCenter = (i === 0);
+                    const dotR = isCenter ? 2.2 : 1.5;
+
+                    ctx.fillStyle = isCenter ? this.colors.dotCenter : this.colors.dotScale;
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 中心点加一个小光晕
+                    if (isCenter) {
+                        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                        ctx.beginPath();
+                        ctx.arc(dotX, dotY, dotR + 1.8, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // --- 绘制 AB 线段（挖去 CD 原始位置） ---
+                // 段1：A 到 C0
+                ctx.strokeStyle = this.colors.cdiLine;
+                ctx.lineWidth = 1.6;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(Ax, Ay);
+                ctx.lineTo(C0x, C0y);
+                ctx.stroke();
+
+                // 段2：D0 到 B
+                ctx.beginPath();
+                ctx.moveTo(D0x, D0y);
+                ctx.lineTo(Bx, By);
+                ctx.stroke();
+
+                // --- 绘制平移后的 CD 线段 ---
+                // 如果偏离量较大，给 CD 一个更醒目的外观
+                const absOffset = Math.abs(devOffset);
+                const cdiAlpha = Math.min(1, 0.7 + absOffset * 0.15);
+                ctx.strokeStyle = `rgba(240,240,240,${cdiAlpha})`;
+                ctx.lineWidth = 2.0;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(Cpx, Cpy);
+                ctx.lineTo(Dpx, Dpy);
+                ctx.stroke();
+
+                // CD 端点小标记
+                for (const [ex, ey] of [
+                        [Cpx, Cpy],
+                        [Dpx, Dpy]
+                    ]) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, 1.8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // --- AB 端点小标记（A 端略明显，靠近航迹方向） ---
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.beginPath();
+                ctx.arc(Ax, Ay, 1.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.beginPath();
+                ctx.arc(Bx, By, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ==================== 页面初始化和交互 ====================
+        (function() {
+            const canvas = document.getElementById('navDisplay');
+            const navDisplay = new NavigationDisplay(canvas);
+
+            // 输入控件
+            const inpNavDist = document.getElementById('inpNavDist');
+            const inpCourse = document.getElementById('inpCourse');
+            const inpHeading = document.getElementById('inpHeading');
+            const inpHeadingSel = document.getElementById('inpHeadingSel');
+            const inpDevOffset = document.getElementById('inpDevOffset');
+            const btnRandom = document.getElementById('btnRandom');
+            const btnAnimate = document.getElementById('btnAnimate');
+            const btnNullDist = document.getElementById('btnNullDist');
+
+            let isNullDist = false;
+            let animationId = null;
+            let animHeading = 0;
+
+            function getData() {
+                const navDistVal = inpNavDist.value.trim();
+                let navDist;
+                if (isNullDist || navDistVal === '' || navDistVal === '-') {
+                    navDist = null;
+                } else {
+                    navDist = parseFloat(navDistVal);
+                    if (isNaN(navDist)) navDist = null;
+                }
+                return {
+                    navDist: navDist,
+                    course: parseInt(inpCourse.value) || 0,
+                    heading: parseInt(inpHeading.value) || 0,
+                    headingSelection: parseInt(inpHeadingSel.value) || 0,
+                    devOffset: parseFloat(inpDevOffset.value) || 0,
+                };
+            }
+
+            function refresh() {
+                const data = getData();
+                navDisplay.updateDisplay(data);
+            }
+
+            // 初始显示
+            refresh();
+
+            // 监听输入变化
+            [inpNavDist, inpCourse, inpHeading, inpHeadingSel, inpDevOffset].forEach(inp => {
+                inp.addEventListener('input', refresh);
+                inp.addEventListener('change', refresh);
+            });
+
+            // 随机按钮
+            btnRandom.addEventListener('click', () => {
+                isNullDist = false;
+                btnNullDist.classList.remove('active');
+                inpNavDist.value = (Math.random() * 100).toFixed(1);
+                inpCourse.value = Math.floor(Math.random() * 360);
+                inpHeading.value = Math.floor(Math.random() * 360);
+                inpHeadingSel.value = Math.floor(Math.random() * 360);
+                inpDevOffset.value = ((Math.random() - 0.5) * 3).toFixed(1);
+                refresh();
+            });
+
+            // 动画按钮
+            btnAnimate.addEventListener('click', () => {
+                if (animationId) {
+                    // 停止动画
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                    btnAnimate.classList.remove('active');
+                    btnAnimate.textContent = '▶ 动画';
+                    return;
+                }
+                // 开始动画
+                btnAnimate.classList.add('active');
+                btnAnimate.textContent = '⏸ 停止';
+                animHeading = parseInt(inpHeading.value) || 0;
+
+                function animate() {
+                    animHeading = (animHeading + 0.6) % 360;
+                    inpHeading.value = Math.round(animHeading);
+                    // 同时微调偏离
+                    const t = animHeading * Math.PI / 180;
+                    const dev = Math.sin(t * 2.3) * 1.2;
+                    inpDevOffset.value = dev.toFixed(1);
+                    refresh();
+                    animationId = requestAnimationFrame(animate);
+                }
+                animationId = requestAnimationFrame(animate);
+            });
+
+            // --.- 按钮
+            btnNullDist.addEventListener('click', () => {
+                isNullDist = !isNullDist;
+                if (isNullDist) {
+                    btnNullDist.classList.add('active');
+                    inpNavDist.value = '';
+                    inpNavDist.placeholder = 'null → --.-';
+                } else {
+                    btnNullDist.classList.remove('active');
+                    inpNavDist.value = '12.5';
+                    inpNavDist.placeholder = '';
+                }
+                refresh();
+            });
+
+            // 键盘控制
+            document.addEventListener('keydown', (e) => {
+                let handled = true;
+                const step = e.shiftKey ? 10 : 1;
+                switch (e.key.toLowerCase()) {
+                    case 'arrowleft':
+                        inpHeading.value = (parseInt(inpHeading.value) - step + 360) % 360;
+                        break;
+                    case 'arrowright':
+                        inpHeading.value = (parseInt(inpHeading.value) + step) % 360;
+                        break;
+                    case 'arrowup':
+                        inpCourse.value = (parseInt(inpCourse.value) + step) % 360;
+                        break;
+                    case 'arrowdown':
+                        inpCourse.value = (parseInt(inpCourse.value) - step + 360) % 360;
+                        break;
+                    case 'w':
+                        inpHeadingSel.value = (parseInt(inpHeadingSel.value) - step + 360) % 360;
+                        break;
+                    case 's':
+                        inpHeadingSel.value = (parseInt(inpHeadingSel.value) + step) % 360;
+                        break;
+                    case 'a':
+                        inpDevOffset.value = Math.max(-2.5, (parseFloat(inpDevOffset.value) || 0) - 0.1).toFixed(
+                            1);
+                        break;
+                    case 'd':
+                        inpDevOffset.value = Math.min(2.5, (parseFloat(inpDevOffset.value) || 0) + 0.1).toFixed(
+                            1);
+                        break;
+                    case 'r':
+                        btnRandom.click();
+                        break;
+                    default:
+                        handled = false;
+                }
+                if (handled) {
+                    e.preventDefault();
+                    refresh();
+                }
+            });
+
+            console.log('✅ 导航显示仪表已就绪');
+            console.log('  键盘控制：← → 调整航向 | ↑ ↓ 调整航迹 | W/S 调整航向游标 | A/D 调整偏离 | R 随机');
+            console.log('  Shift+方向键 = 步长10°');
+            console.log('  点击"动画"按钮自动演示');
+        })();
+    </script>
+</body>
+</html>

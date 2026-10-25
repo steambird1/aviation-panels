@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机空速表 - Airspeed Indicator</title>
+    <link rel="stylesheet" href="/styles/inst_general.css" />
+    <link rel="stylesheet" href="/styles/airspeed.css" />
+</head>
+<body>
+
+    <div class="instrument-panel">
+        <div class="instrument-wrapper">
+            <canvas id="asiCanvas1" class="airspeed" width="132" height="132"></canvas>
+            <span class="instrument-label">空速表 #1</span>
+        </div>
+        <div class="instrument-wrapper">
+            <canvas id="asiCanvas2" class="airspeed" width="132" height="132"></canvas>
+            <span class="instrument-label">空速表 #2</span>
+        </div>
+    </div>
+
+    <div class="controls" id="controlsPanel">
+        <h3>🎛️ 控制面板（表 #1）</h3>
+
+        <div class="control-group">
+            <label>空速 (节) <span class="value-display" id="speedVal">150.0</span></label>
+            <input type="range" id="speedSlider" min="0" max="300" value="150" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>马赫数 <span class="value-display" id="machVal">0.780</span></label>
+            <input type="range" id="machSlider" min="0.3" max="0.95" value="0.78" step="0.001">
+        </div>
+
+        <div class="control-group">
+            <label>选定速度游标 <span class="value-display" id="selSpeedVal">250</span></label>
+            <input type="range" id="selSpeedSlider" min="0" max="300" value="250" step="1">
+        </div>
+
+        <div class="control-group">
+            <label>游标颜色</label>
+            <div class="color-presets" id="colorPresets">
+                <span class="color-preset active" data-color="#ff2d78" style="background:#ff2d78;" title="玫红"></span>
+                <span class="color-preset" data-color="#00e5ff" style="background:#00e5ff;" title="青色"></span>
+                <span class="color-preset" data-color="#ffea00" style="background:#ffea00;" title="黄色"></span>
+                <span class="color-preset" data-color="#76ff03" style="background:#76ff03;" title="绿色"></span>
+                <span class="color-preset" data-color="#ff9100" style="background:#ff9100;" title="橙色"></span>
+                <span class="color-preset" data-color="#d500f9" style="background:#d500f9;" title="紫色"></span>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" id="btnHideCursor">隐藏游标</button>
+            <button class="btn" id="btnShowCursor">显示游标</button>
+            <button class="btn" id="btnReset">重置</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import {AirspeedIndication} from "/scripts/airspeed.js";
+
+        // ================================================================
+        //  DEMO：实例化两个空速表并绑定控制面板
+        // ================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // 获取两个 canvas
+            const canvas1 = document.getElementById('asiCanvas1');
+            const canvas2 = document.getElementById('asiCanvas2');
+
+            // 实例化空速表对象
+            const asi1 = new AirspeedIndication(canvas1);
+            const asi2 = new AirspeedIndication(canvas2);
+
+            // 初始状态：表 #2 设为不同值展示
+            asi2.updateDisplay(220, 0.845, { value: 180, color: '#00e5ff' });
+
+            // ---- 控制面板绑定（控制表 #1） ----
+            const speedSlider = document.getElementById('speedSlider');
+            const speedVal = document.getElementById('speedVal');
+            const machSlider = document.getElementById('machSlider');
+            const machVal = document.getElementById('machVal');
+            const selSpeedSlider = document.getElementById('selSpeedSlider');
+            const selSpeedVal = document.getElementById('selSpeedVal');
+            const colorPresets = document.getElementById('colorPresets');
+            const btnHideCursor = document.getElementById('btnHideCursor');
+            const btnShowCursor = document.getElementById('btnShowCursor');
+            const btnReset = document.getElementById('btnReset');
+
+            let currentCursorColor = '#ff2d78';
+            let cursorHidden = false;
+
+            // 更新表 #1 的通用函数
+            function updateASI1() {
+                const speed = parseFloat(speedSlider.value);
+                const mach = parseFloat(machSlider.value);
+                const selSpeed = cursorHidden ? null : parseInt(selSpeedSlider.value);
+
+                speedVal.textContent = speed.toFixed(1);
+                machVal.textContent = mach.toFixed(3);
+                selSpeedVal.textContent = cursorHidden ? '—' : selSpeed;
+
+                asi1.updateDisplay(speed, mach, {
+                    value: selSpeed,
+                    color: currentCursorColor,
+                });
+            }
+
+            // 速度滑块
+            speedSlider.addEventListener('input', () => {
+                updateASI1();
+            });
+
+            // 马赫数滑块
+            machSlider.addEventListener('input', () => {
+                updateASI1();
+            });
+
+            // 选定速度滑块
+            selSpeedSlider.addEventListener('input', () => {
+                if (!cursorHidden) {
+                    updateASI1();
+                }
+                selSpeedVal.textContent = cursorHidden ? '—' : parseInt(selSpeedSlider.value);
+            });
+
+            // 颜色预设点击
+            colorPresets.addEventListener('click', (e) => {
+                const preset = e.target.closest('.color-preset');
+                if (!preset) return;
+
+                // 更新激活状态
+                colorPresets.querySelectorAll('.color-preset').forEach(el => el.classList.remove(
+                    'active'));
+                preset.classList.add('active');
+
+                currentCursorColor = preset.dataset.color;
+                if (!cursorHidden) {
+                    updateASI1();
+                }
+            });
+
+            // 隐藏游标
+            btnHideCursor.addEventListener('click', () => {
+                cursorHidden = true;
+                selSpeedVal.textContent = '—';
+                btnHideCursor.classList.add('active-btn');
+                btnShowCursor.classList.remove('active-btn');
+                updateASI1();
+            });
+
+            // 显示游标
+            btnShowCursor.addEventListener('click', () => {
+                cursorHidden = false;
+                selSpeedVal.textContent = parseInt(selSpeedSlider.value);
+                btnShowCursor.classList.add('active-btn');
+                btnHideCursor.classList.remove('active-btn');
+                updateASI1();
+            });
+            // 初始状态：显示游标
+            btnShowCursor.classList.add('active-btn');
+
+            // 重置
+            btnReset.addEventListener('click', () => {
+                speedSlider.value = 150;
+                machSlider.value = 0.78;
+                selSpeedSlider.value = 250;
+                cursorHidden = false;
+                currentCursorColor = '#ff2d78';
+                speedVal.textContent = '150.0';
+                machVal.textContent = '0.780';
+                selSpeedVal.textContent = '250';
+                btnShowCursor.classList.add('active-btn');
+                btnHideCursor.classList.remove('active-btn');
+                colorPresets.querySelectorAll('.color-preset').forEach(el => el.classList.remove('active'));
+                const firstPreset = colorPresets.querySelector('[data-color="#ff2d78"]');
+                if (firstPreset) firstPreset.classList.add('active');
+                updateASI1();
+            });
+
+            // 初始更新
+            updateASI1();
+
+            console.log('✅ 空速表已就绪！');
+            console.log('   - 表 #1：可通过控制面板调节');
+            console.log('   - 表 #2：固定展示（速度220节，马赫0.845，游标180节青色）');
+            console.log('   - 速度显示窗最后一位数字有滚动效果（观察小数部分变化）');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机高度表 - Altitude Indicator</title>
+    <link rel="stylesheet" href="/styles/inst_general.css" />
+    <link rel="stylesheet" href="/styles/alt.css" />
+</head>
+<body>
+    <div class="container">
+        <div class="instrument-panel">
+            <canvas id="altimeterCanvas" class="altitude" width="132" height="132"></canvas>
+        </div>
+        <div class="controls" id="controls">
+            <div class="control-group">
+                <label>🛫 当前高度 (Altitude) <span class="value-display" id="altValue">0 ft</span></label>
+                <input type="range" id="altSlider" min="0" max="35000" value="0" step="1">
+            </div>
+            <div class="control-group">
+                <label>🌡️ 修正海压 (QNH) <span class="value-display" id="qnhValue">29.92 inHg</span></label>
+                <input type="range" id="qnhSlider" min="28.00" max="31.00" value="29.92" step="0.01">
+            </div>
+            <div class="control-group">
+                <label>🎯 选定高度 (Selected Alt) <span class="value-display" id="selAltValue">--</span></label>
+                <input type="range" id="selAltSlider" min="0" max="35000" value="0" step="50">
+                <div class="toggle-row" style="margin-top:4px;">
+                    <button class="toggle-btn active" id="toggleSelected">显示游标</button>
+                    <span style="color:#b0b8c4;font-size:12px;">游标颜色：</span>
+                    <span class="color-presets" id="colorPresets">
+                        <span class="color-preset active" data-color="#ff3388" style="background:#ff3388;" title="品红"></span>
+                        <span class="color-preset" data-color="#00e5ff" style="background:#00e5ff;" title="青色"></span>
+                        <span class="color-preset" data-color="#ffea00" style="background:#ffea00;" title="黄色"></span>
+                        <span class="color-preset" data-color="#76ff03" style="background:#76ff03;" title="绿色"></span>
+                        <span class="color-preset" data-color="#ff6d00" style="background:#ff6d00;" title="橙色"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {AltitudeIndication} from "/scripts/alt.js";
+
+        /**
+         * AltitudeIndication - 飞机高度表
+         * 使用 Canvas 绘制圆形高度表，包含刻度、指针、高度选择窗、修正海压窗和选定高度游标。
+         * Canvas 尺寸固定为 132×132 像素。
+         */
+        
+        // ==================== 页面初始化与交互 ====================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('altimeterCanvas');
+            const altimeter = new AltitudeIndication(canvas);
+
+            // DOM 元素
+            const altSlider = document.getElementById('altSlider');
+            const altValueEl = document.getElementById('altValue');
+            const qnhSlider = document.getElementById('qnhSlider');
+            const qnhValueEl = document.getElementById('qnhValue');
+            const selAltSlider = document.getElementById('selAltSlider');
+            const selAltValueEl = document.getElementById('selAltValue');
+            const toggleSelectedBtn = document.getElementById('toggleSelected');
+            const colorPresetsContainer = document.getElementById('colorPresets');
+
+            let showSelected = true;
+            let currentBugColor = '#ff3388';
+
+            // 更新显示
+            function refreshDisplay() {
+                const alt = parseInt(altSlider.value);
+                const qnh = parseFloat(qnhSlider.value);
+                const selAlt = showSelected ? parseInt(selAltSlider.value) : null;
+
+                altValueEl.textContent = alt.toLocaleString() + ' ft';
+                qnhValueEl.textContent = qnh.toFixed(2) + ' inHg';
+
+                if (showSelected && selAlt !== null) {
+                    selAltValueEl.textContent = selAlt.toLocaleString() + ' ft';
+                } else {
+                    selAltValueEl.textContent = '--';
+                }
+
+                altimeter.updateDisplay(alt, qnh, {
+                    value: selAlt,
+                    color: currentBugColor,
+                });
+            }
+
+            // 事件绑定
+            altSlider.addEventListener('input', refreshDisplay);
+            qnhSlider.addEventListener('input', refreshDisplay);
+            selAltSlider.addEventListener('input', refreshDisplay);
+
+            // 切换游标显示
+            toggleSelectedBtn.addEventListener('click', () => {
+                showSelected = !showSelected;
+                if (showSelected) {
+                    toggleSelectedBtn.classList.add('active');
+                    toggleSelectedBtn.textContent = '显示游标';
+                } else {
+                    toggleSelectedBtn.classList.remove('active');
+                    toggleSelectedBtn.textContent = '隐藏游标';
+                }
+                refreshDisplay();
+            });
+
+            // 颜色预设点击
+            colorPresetsContainer.addEventListener('click', (e) => {
+                const preset = e.target.closest('.color-preset');
+                if (!preset) return;
+
+                const color = preset.getAttribute('data-color');
+                if (color) {
+                    currentBugColor = color;
+                    // 更新活跃状态
+                    document.querySelectorAll('.color-preset').forEach(p => p.classList.remove(
+                        'active'));
+                    preset.classList.add('active');
+                    refreshDisplay();
+                }
+            });
+
+            // 初始渲染
+            refreshDisplay();
+
+            // 设置初始游标颜色预设为活跃
+            const initialPreset = colorPresetsContainer.querySelector('[data-color="#ff3388"]');
+            if (initialPreset) initialPreset.classList.add('active');
+
+            console.log('✈️ 飞机高度表已就绪 | Altitude Indicator Ready');
+            console.log('   Canvas: 132×132 px');
+            console.log('   拖动滑块查看高度表动态变化');
+            console.log('   高度范围: 0 - 35,000 ft');
+            console.log('   QNH 范围: 28.00 - 31.00 inHg');
+        });
+    </script>
+</body>
+</html>

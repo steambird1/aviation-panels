@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>模拟摇杆 - 坐标选择系统</title>
+	<link rel="stylesheet" href="/styles/inst_general.css" />
+	<link rel="stylesheet" href="/styles/stick.css" />
+</head>
+<body>
+
+	<div class="canvas-wrapper">
+		<canvas id="joystickCanvas" width="520" height="520"></canvas>
+	</div>
+
+	<div class="info-panel">
+		<div class="coord-group">
+			<span class="label">X 坐标</span>
+			<span class="value" id="coordX">0.0</span>
+		</div>
+		<div class="coord-group">
+			<span class="label">Y 坐标</span>
+			<span class="value" id="coordY">0.0</span>
+		</div>
+		<div class="status-indicator">
+			<div class="status-dot idle" id="statusDot"></div>
+			<span class="label" id="statusLabel">待命</span>
+		</div>
+	</div>
+	<p class="hint-text">点击画布切换「操作 / 不操作」状态 · 操作时移动鼠标选取坐标</p>
+
+	<script type="module">
+		import { SimulatedJoystick } from "/scripts/stick.js";
+
+		// ============ 初始化 ============
+		document.addEventListener('DOMContentLoaded', () => {
+			const canvas = document.getElementById('joystickCanvas');
+			const joystick = new SimulatedJoystick(canvas, {
+				onChange: (coord) => {
+					// 可选：在控制台输出坐标变化
+					// console.log(`坐标变化: (${coord.x}, ${coord.y})`);
+				}
+			});
+
+			// 暴露到全局作用域，方便在控制台中调试
+			window.joystick = joystick;
+
+			// 初始时更新外部显示
+			const coord = joystick.getCoord();
+			document.getElementById('coordX').textContent = coord.x.toFixed(1);
+			document.getElementById('coordY').textContent = coord.y.toFixed(1);
+			document.getElementById('statusDot').className = 'status-dot idle';
+			document.getElementById('statusLabel').textContent = '待命';
+		});
+	</script>
+</body>
+</html>
