@@ -208,6 +208,23 @@ button.on('guardchange', ({ cmpName, open }) => {
 
 > `IndicatorLightGroup` 暂不支持盖板。盖板只影响运行时操作，不改变项目 JSON 的事件模型。
 
+### 4.2 多行文本
+
+标签文本、按钮文本、指示灯文本等支持自动换行；在 JSON 字符串中可以使用 `\n` 显式换行：
+
+```json
+{
+  "text": "AUTO\nTHRUST",
+  "label": "FLIGHT\nDIRECTOR"
+}
+```
+
+编辑器中的标签文本、按钮文本和指示灯文本字段为多行输入框，可直接按回车换行。`IndicatorLightGroup` 的 `texts` 数组元素在 JSON 中也可以包含 `\n`：
+
+```json
+"texts": ["APU\nON", "BLEED", "FUEL"]
+```
+
 ---
 
 ## 5. 颜色格式

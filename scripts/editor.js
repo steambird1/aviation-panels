@@ -668,10 +668,10 @@ function onMarqueeEnd(event) {
             const view = state.componentViews.get(component.id);
             if (!view) return false;
             const bounds = view.wrapper.getBoundingClientRect();
-            return bounds.left >= rect.left &&
-                bounds.right <= rect.right &&
-                bounds.top >= rect.top &&
-                bounds.bottom <= rect.bottom;
+            return bounds.left < rect.right &&
+                bounds.right > rect.left &&
+                bounds.top < rect.bottom &&
+                bounds.bottom > rect.top;
         })
         .map((component) => component.id);
 
@@ -755,6 +755,24 @@ function toggleComponentSelection(panelId, componentId) {
     }
 }
 
+function selectAllComponentsInActivePanel() {
+    const panelId = state.activePanelId ||
+        getSelectedPanelId() ||
+        state.project.panels[0]?.id;
+    const panel = (panelId && findPanelModel(panelId)) || state.project.panels[0];
+    if (!panel) return;
+
+    const ids = panel.components.map((component) => component.id);
+    if (!ids.length) {
+        selectNothing();
+        setMessage('当前面板没有组件');
+        return;
+    }
+
+    selectComponents(panel.id, ids, ids[0]);
+    setMessage(`已全选当前面板 ${ids.length} 个组件`);
+}
+
 function selectPanel(panelId) {
     state.selected = { kind: 'panel', panelId };
     state.activePanelId = panelId;
@@ -803,7 +821,7 @@ function updateStatus() {
     }
     if (selected.kind === 'components') {
         dom.statusSelection.textContent = `已选择 ${selected.componentIds.length} 个组件`;
-        dom.workspaceHint.textContent = '拖动任一选中组件可整组移动；Shift / Ctrl 点击增减选择';
+        dom.workspaceHint.textContent = '拖动任一选中组件可整组移动；Shift / Ctrl 点击增减选择；Ctrl+A 全选当前面板';
         return;
     }
     const component = findComponentModel(selected.panelId, selected.componentId);
@@ -977,12 +995,17 @@ function createFieldRow(field, value, handlers = {}) {
         input.addEventListener('change', commit);
         row.appendChild(input);
     } else {
-        input = document.createElement('input');
-        input.type = field.type === 'number' ? 'number' : 'text';
-        if (field.type === 'number') {
-            if (field.min !== undefined) input.min = field.min;
-            if (field.max !== undefined) input.max = field.max;
-            input.step = field.step !== undefined ? field.step : (field.integer ? 1 : 'any');
+        const multiline = field.multiline === true && field.type !== 'number';
+        input = document.createElement(multiline ? 'textarea' : 'input');
+        if (multiline) {
+            input.rows = field.rows || 2;
+        } else {
+            input.type = field.type === 'number' ? 'number' : 'text';
+            if (field.type === 'number') {
+                if (field.min !== undefined) input.min = field.min;
+                if (field.max !== undefined) input.max = field.max;
+                input.step = field.step !== undefined ? field.step : (field.integer ? 1 : 'any');
+            }
         }
         input.value = value === undefined || value === null ? '' : String(value);
         input.spellcheck = false;
@@ -2598,6 +2621,11 @@ function handleKeyDown(event) {
     if (state.preview) return;
 
     const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        selectAllComponentsInActivePanel();
+        return;
+    }
     if (modifier && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) redo();

@@ -23,7 +23,14 @@ export const LEVER_ORIENTATION_OPTIONS = [
 export const COLOR_SUGGESTIONS = ['green', 'amber', 'blue', 'red', 'white', 'cyan'];
 
 const LABEL_FIELDS = [
-    { key: 'label', label: '标签文本', type: 'text', placeholder: '留空则不显示' },
+    {
+        key: 'label',
+        label: '标签文本',
+        type: 'text',
+        placeholder: '留空则不显示',
+        multiline: true,
+        rows: 2,
+    },
     { key: 'labelPosition', label: '标签位置', type: 'select', options: LABEL_POSITION_OPTIONS },
     {
         key: 'labelOrientation',
@@ -66,7 +73,14 @@ export const COMPONENT_TYPES = {
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
-            { key: 'text', label: '按键文本', type: 'text', placeholder: '例如 AP1' },
+            {
+                key: 'text',
+                label: '按键文本',
+                type: 'text',
+                placeholder: '例如 AP1',
+                multiline: true,
+                rows: 2,
+            },
             GUARD_FIELD,
         ]),
     },
@@ -92,12 +106,12 @@ export const COMPONENT_TYPES = {
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
-            { key: 'text', label: '按键文本', type: 'text' },
+            { key: 'text', label: '按键文本', type: 'text', multiline: true, rows: 2 },
             COLOR('upperLightColor', '上方灯颜色'),
-            { key: 'upperLightText', label: '上方灯文本', type: 'text' },
+            { key: 'upperLightText', label: '上方灯文本', type: 'text', multiline: true, rows: 2 },
             NUMBER('initialUpperBrightness', '上方灯亮度', { min: 0, max: 100, step: 1 }),
             COLOR('lowerLightColor', '下方灯颜色'),
-            { key: 'lowerLightText', label: '下方灯文本', type: 'text' },
+            { key: 'lowerLightText', label: '下方灯文本', type: 'text', multiline: true, rows: 2 },
             NUMBER('initialLowerBrightness', '下方灯亮度', { min: 0, max: 100, step: 1 }),
             GUARD_FIELD,
         ]),
@@ -121,7 +135,7 @@ export const COMPONENT_TYPES = {
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
-            { key: 'text', label: '灯内文本', type: 'text' },
+            { key: 'text', label: '灯内文本', type: 'text', multiline: true, rows: 2 },
             COLOR('backgroundColor', '背景 / 发光颜色'),
             COLOR('foregroundColor', '前景 / 文字颜色'),
             NUMBER('initialBrightness', '亮度', { min: 0, max: 100, step: 1 }),

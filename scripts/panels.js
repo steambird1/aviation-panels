@@ -1270,8 +1270,11 @@ export class IndicatorLightGroup extends BaseComponent {
                 display: 'block',
                 maxWidth: '100%',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                wordBreak: 'normal',
+                textAlign: 'center',
+                lineHeight: '1',
             });
             lamp.appendChild(textEl);
             lamp.setAttribute('aria-label', this._texts[index] || `${this.cmpName} ${index + 1}`);
