@@ -46,6 +46,11 @@ body.is-editing-drag {
     user-select: none;
 }
 
+body.is-marquee-dragging {
+    cursor: crosshair !important;
+    user-select: none;
+}
+
 .editor-app {
     height: 100vh;
     display: flex;
@@ -579,6 +584,10 @@ body.is-editing-drag {
     pointer-events: auto;
 }
 
+.editor-component-hit.is-multi-selected .resize-handle {
+    display: none;
+}
+
 .resize-handle[data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
 .resize-handle[data-handle="n"]  { left: 50%; top: -5px; margin-left: -4.5px; cursor: ns-resize; }
 .resize-handle[data-handle="ne"] { right: -5px; top: -5px; cursor: nesw-resize; }
@@ -601,6 +610,18 @@ body.is-editing-drag {
     border-radius: 4px;
     background: rgba(77, 166, 255, 0.13);
     box-shadow: inset 0 0 0 1px rgba(77, 166, 255, 0.2);
+}
+
+.editor-marquee {
+    position: fixed;
+    pointer-events: none;
+    z-index: 900;
+    border: 1px solid var(--editor-accent);
+    border-radius: 2px;
+    background: rgba(77, 166, 255, 0.12);
+    box-shadow:
+        0 0 0 1px rgba(77, 166, 255, 0.2),
+        inset 0 0 0 1px rgba(77, 166, 255, 0.08);
 }
 
 .editor-drop-marker.is-invalid,
@@ -843,6 +864,50 @@ body.is-editing-drag {
     color: #9cb4cb;
     font-size: 10px;
     line-height: 1.55;
+}
+
+.multi-selection-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.multi-selection-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--editor-line-soft);
+    border-radius: 4px;
+    background: #12161d;
+}
+
+.multi-selection-copy {
+    min-width: 0;
+}
+
+.multi-selection-copy strong {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.multi-selection-copy small {
+    display: block;
+    margin-top: 2px;
+    color: var(--editor-text-dim);
+    font-size: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.multi-selection-grid {
+    flex: 0 0 auto;
+    color: #8eb9df;
+    font-size: 9px;
+    letter-spacing: 0.04em;
 }
 
 .inspector-stats {

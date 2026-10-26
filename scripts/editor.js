@@ -22,6 +22,7 @@ import {
 const HISTORY_LIMIT = 60;
 const AUTOSAVE_DELAY = 300;
 const HISTORY_DELAY = 350;
+const MARQUEE_THRESHOLD = 4;
 const GRID_HANDLE_NAMES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const COLOR_HEX = {
     green: '#40c860',
@@ -50,7 +51,7 @@ const dom = {
 // ==================== 状态 ====================
 const state = {
     project: createProject(),
-    selected: null, // {kind:'component'|'panel', panelId, componentId?}
+    selected: null, // {kind:'component'|'components'|'panel', panelId, componentId?/componentIds?}
     activePanelId: null,
     panelViews: new Map(),
     componentViews: new Map(),
@@ -60,6 +61,7 @@ const state = {
     autosaveTimer: 0,
     preview: false,
     drag: null,
+    marquee: null,
     clipboard: null,
     paletteDragType: null,
     paletteMarker: null,
@@ -128,6 +130,57 @@ function findComponentLocation(componentId) {
         if (component) return { panel, component };
     }
     return null;
+}
+
+function getSelectedComponentIds(selection = state.selected) {
+    if (!selection) return [];
+    if (selection.kind === 'component') return [selection.componentId];
+    if (selection.kind === 'components') return [...selection.componentIds];
+    return [];
+}
+
+function getSelectedPanelId(selection = state.selected) {
+    return selection?.panelId || null;
+}
+
+function getSelectedComponentModels() {
+    const panelId = getSelectedPanelId();
+    if (!panelId) return [];
+    return getSelectedComponentIds()
+        .map((id) => findComponentModel(panelId, id))
+        .filter(Boolean);
+}
+
+function isComponentSelected(panelId, componentId) {
+    return getSelectedPanelId() === panelId &&
+        getSelectedComponentIds().includes(componentId);
+}
+
+function getGroupBounds(components) {
+    const minRow = Math.min(...components.map((component) => component.grid.row));
+    const minCol = Math.min(...components.map((component) => component.grid.col));
+    const maxRow = Math.max(...components.map((component) =>
+        component.grid.row + component.grid.rowSpan - 1));
+    const maxCol = Math.max(...components.map((component) =>
+        component.grid.col + component.grid.colSpan - 1));
+    return {
+        row: minRow,
+        col: minCol,
+        rowSpan: maxRow - minRow + 1,
+        colSpan: maxCol - minCol + 1,
+    };
+}
+
+function isGroupFree(panel, grids, excludeIds = []) {
+    const excluded = new Set(excludeIds);
+    return grids.every((grid) => {
+        if (grid.row < 1 || grid.col < 1) return false;
+        if (grid.row + grid.rowSpan - 1 > panel.rows) return false;
+        if (grid.col + grid.colSpan - 1 > panel.columns) return false;
+        return !panel.components.some((component) =>
+            !excluded.has(component.id) && rectsOverlap(component.grid, grid)
+        );
+    });
 }
 
 function isTextInputTarget(target) {
@@ -207,7 +260,7 @@ function scheduleHistory(delay = HISTORY_DELAY) {
 }
 
 function undo() {
-    if (state.drag || state.preview) return;
+    if (state.drag || state.marquee || state.preview) return;
     window.clearTimeout(state.historyTimer);
     pushHistory();
     if (state.historyIndex <= 0) return;
@@ -217,7 +270,7 @@ function undo() {
 }
 
 function redo() {
-    if (state.drag || state.preview) return;
+    if (state.drag || state.marquee || state.preview) return;
     window.clearTimeout(state.historyTimer);
     pushHistory();
     if (state.historyIndex >= state.history.length - 1) return;
@@ -252,6 +305,16 @@ function restoreSelectionAfterProjectChange(previous) {
         const location = findComponentLocation(previous.componentId);
         if (location) {
             selectComponent(location.panel.id, previous.componentId);
+            return;
+        }
+    }
+    if (previous.kind === 'components') {
+        const panel = findPanelModel(previous.panelId);
+        const ids = previous.componentIds.filter((id) =>
+            findComponentModel(previous.panelId, id)
+        );
+        if (panel && ids.length) {
+            selectComponents(previous.panelId, ids, previous.primaryId);
             return;
         }
     }
@@ -296,6 +359,7 @@ function loadFromLocalStorage() {
 // ==================== 项目 / 面板渲染 ====================
 function renderAll() {
     clearDragArtifacts();
+    clearMarqueeArtifacts();
     destroyAllViews();
     dom.canvas.replaceChildren();
 
@@ -365,11 +429,11 @@ function createPanelView(panelModel) {
     state.panelViews.set(panelModel.id, view);
 
     panelDiv.addEventListener('pointerdown', (event) => {
-        if (state.preview || state.drag) return;
+        if (state.preview || state.drag || state.marquee) return;
         if (event.button !== 0) return;
         if (event.target === panelDiv || event.target === gridEl) {
             event.stopPropagation();
-            selectPanel(panelModel.id);
+            beginMarquee(event, view);
         }
     });
 
@@ -419,11 +483,27 @@ function createComponentView(panelView, componentModel) {
     state.componentViews.set(componentModel.id, view);
 
     overlay.addEventListener('pointerdown', (event) => {
-        if (state.preview || event.button !== 0) return;
+        if (state.preview || state.drag || state.marquee || event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-        selectComponent(panelView.model.id, componentModel.id);
-        beginMoveDrag(event, view);
+
+        const modifier = event.shiftKey || event.ctrlKey || event.metaKey;
+        if (modifier) {
+            toggleComponentSelection(panelView.model.id, componentModel.id);
+            return;
+        }
+
+        const alreadySelected = isComponentSelected(
+            panelView.model.id,
+            componentModel.id
+        );
+        if (!alreadySelected) {
+            selectComponent(panelView.model.id, componentModel.id);
+        }
+        const componentIds = alreadySelected
+            ? getSelectedComponentIds()
+            : [componentModel.id];
+        beginMoveDrag(event, view, componentIds);
     });
 
     overlay.querySelectorAll('.resize-handle').forEach((handleEl) => {
@@ -501,6 +581,128 @@ function removePaletteMarker() {
     }
 }
 
+// ==================== 框选 ====================
+function beginMarquee(event, panelView) {
+    if (state.preview || state.drag || state.marquee) return;
+
+    const marqueeEl = createEl('div', 'editor-marquee');
+    marqueeEl.style.display = 'none';
+    document.body.appendChild(marqueeEl);
+
+    state.marquee = {
+        panelId: panelView.model.id,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+        active: false,
+        el: marqueeEl,
+    };
+    state.activePanelId = panelView.model.id;
+    document.body.classList.add('is-marquee-dragging');
+    window.addEventListener('pointermove', onMarqueeMove);
+    window.addEventListener('pointerup', onMarqueeEnd);
+    window.addEventListener('pointercancel', onMarqueeCancel);
+    capturePointer(panelView.panelDiv, event);
+    if (event.cancelable) event.preventDefault();
+    setMessage('拖动框选组件；松开完成');
+}
+
+function onMarqueeMove(event) {
+    const marquee = state.marquee;
+    if (!marquee) return;
+    if (marquee.pointerId !== undefined && event.pointerId !== undefined &&
+        event.pointerId !== marquee.pointerId) return;
+    if (event.cancelable) event.preventDefault();
+
+    marquee.currentX = event.clientX;
+    marquee.currentY = event.clientY;
+    const dx = Math.abs(marquee.currentX - marquee.startX);
+    const dy = Math.abs(marquee.currentY - marquee.startY);
+
+    if (!marquee.active && (dx > MARQUEE_THRESHOLD || dy > MARQUEE_THRESHOLD)) {
+        marquee.active = true;
+        marquee.el.style.display = 'block';
+    }
+    if (!marquee.active) return;
+
+    const left = Math.min(marquee.startX, marquee.currentX);
+    const top = Math.min(marquee.startY, marquee.currentY);
+    marquee.el.style.left = `${left}px`;
+    marquee.el.style.top = `${top}px`;
+    marquee.el.style.width = `${dx}px`;
+    marquee.el.style.height = `${dy}px`;
+}
+
+function getMarqueeRect(marquee) {
+    return {
+        left: Math.min(marquee.startX, marquee.currentX),
+        top: Math.min(marquee.startY, marquee.currentY),
+        right: Math.max(marquee.startX, marquee.currentX),
+        bottom: Math.max(marquee.startY, marquee.currentY),
+    };
+}
+
+function onMarqueeEnd(event) {
+    const marquee = state.marquee;
+    if (!marquee) return;
+    if (marquee.pointerId !== undefined && event.pointerId !== undefined &&
+        event.pointerId !== marquee.pointerId) return;
+
+    const panelId = marquee.panelId;
+    const active = marquee.active;
+    const rect = getMarqueeRect(marquee);
+    clearMarqueeArtifacts();
+
+    if (!active) {
+        selectPanel(panelId);
+        return;
+    }
+
+    const panelView = state.panelViews.get(panelId);
+    if (!panelView) return;
+
+    const selectedIds = panelView.model.components
+        .filter((component) => {
+            const view = state.componentViews.get(component.id);
+            if (!view) return false;
+            const bounds = view.wrapper.getBoundingClientRect();
+            return bounds.left >= rect.left &&
+                bounds.right <= rect.right &&
+                bounds.top >= rect.top &&
+                bounds.bottom <= rect.bottom;
+        })
+        .map((component) => component.id);
+
+    if (selectedIds.length) {
+        selectComponents(panelId, selectedIds, selectedIds[0]);
+        setMessage(`已框选 ${selectedIds.length} 个组件`);
+    } else {
+        selectNothing();
+        setMessage('框选范围内没有组件');
+    }
+}
+
+function onMarqueeCancel(event) {
+    const marquee = state.marquee;
+    if (!marquee) return;
+    if (marquee.pointerId !== undefined && event?.pointerId !== undefined &&
+        event.pointerId !== marquee.pointerId) return;
+    clearMarqueeArtifacts();
+    setMessage('已取消框选');
+}
+
+function clearMarqueeArtifacts() {
+    if (!state.marquee) return;
+    state.marquee.el?.remove();
+    window.removeEventListener('pointermove', onMarqueeMove);
+    window.removeEventListener('pointerup', onMarqueeEnd);
+    window.removeEventListener('pointercancel', onMarqueeCancel);
+    state.marquee = null;
+    document.body.classList.remove('is-marquee-dragging');
+}
+
 // ==================== 选择 ====================
 function selectComponent(panelId, componentId) {
     state.selected = { kind: 'component', panelId, componentId };
@@ -508,6 +710,49 @@ function selectComponent(panelId, componentId) {
     refreshSelectionUI();
     renderInspector();
     updateStatus();
+}
+
+function selectComponents(panelId, componentIds, primaryId = null) {
+    const uniqueIds = [...new Set(componentIds)].filter((id) =>
+        findComponentModel(panelId, id)
+    );
+    if (!uniqueIds.length) {
+        selectNothing();
+        return;
+    }
+    if (uniqueIds.length === 1) {
+        selectComponent(panelId, uniqueIds[0]);
+        return;
+    }
+    const primary = uniqueIds.includes(primaryId) ? primaryId : uniqueIds[0];
+    state.selected = {
+        kind: 'components',
+        panelId,
+        componentIds: uniqueIds,
+        primaryId: primary,
+    };
+    state.activePanelId = panelId;
+    refreshSelectionUI();
+    renderInspector();
+    updateStatus();
+}
+
+function toggleComponentSelection(panelId, componentId) {
+    const currentIds = getSelectedPanelId() === panelId
+        ? getSelectedComponentIds()
+        : [];
+    const ids = new Set(currentIds);
+    if (ids.has(componentId)) ids.delete(componentId);
+    else ids.add(componentId);
+
+    const nextIds = [...ids];
+    if (!nextIds.length) {
+        selectNothing();
+    } else if (nextIds.length === 1) {
+        selectComponent(panelId, nextIds[0]);
+    } else {
+        selectComponents(panelId, nextIds, nextIds[0]);
+    }
 }
 
 function selectPanel(panelId) {
@@ -527,10 +772,15 @@ function selectNothing() {
 
 function refreshSelectionUI() {
     const selected = state.selected;
+    const selectedIds = new Set(getSelectedComponentIds(selected));
+    const selectedPanelId = getSelectedPanelId(selected);
+    const isMulti = selected?.kind === 'components' && selectedIds.size > 1;
+
     state.componentViews.forEach((view) => {
-        const isSelected = selected?.kind === 'component' &&
-            selected.componentId === view.model.id;
+        const isSelected = selectedIds.has(view.model.id) &&
+            view.panelId === selectedPanelId;
         view.overlay.classList.toggle('is-selected', isSelected);
+        view.overlay.classList.toggle('is-multi-selected', isSelected && isMulti);
         view.wrapper.classList.toggle('is-editor-selected', isSelected);
     });
     state.panelViews.forEach((view) => {
@@ -549,6 +799,11 @@ function updateStatus() {
     if (selected.kind === 'panel') {
         dom.statusSelection.textContent = `面板：${selected.panelId}`;
         dom.workspaceHint.textContent = '面板已选中，可在右侧修改网格参数';
+        return;
+    }
+    if (selected.kind === 'components') {
+        dom.statusSelection.textContent = `已选择 ${selected.componentIds.length} 个组件`;
+        dom.workspaceHint.textContent = '拖动任一选中组件可整组移动；Shift / Ctrl 点击增减选择';
         return;
     }
     const component = findComponentModel(selected.panelId, selected.componentId);
@@ -574,6 +829,24 @@ function renderInspector() {
         }
         dom.inspectorKind.textContent = '组件';
         renderComponentInspector(location.panel, location.component);
+        return;
+    }
+
+    if (selected?.kind === 'components') {
+        const panel = findPanelModel(selected.panelId);
+        const components = selected.componentIds
+            .map((id) => findComponentModel(selected.panelId, id))
+            .filter(Boolean);
+        if (!panel || !components.length) {
+            selectNothing();
+            return;
+        }
+        if (components.length === 1) {
+            selectComponent(selected.panelId, components[0].id);
+            return;
+        }
+        dom.inspectorKind.textContent = '多选';
+        renderMultiComponentInspector(panel, components);
         return;
     }
 
@@ -809,6 +1082,63 @@ function renderComponentInspector(panel, component) {
     ));
 }
 
+function renderMultiComponentInspector(panel, components) {
+    const bounds = getGroupBounds(components);
+    dom.inspector.appendChild(createObjectHead(
+        '▦',
+        '已选择多个组件',
+        `${components.length} 个组件 · ${panel.id}`
+    ));
+
+    const summary = createSection('选择统计');
+    const statGrid = createEl('div', 'inspector-stats');
+    const countStat = createEl('div', 'inspector-stat');
+    countStat.appendChild(createEl('strong', '', String(components.length)));
+    countStat.appendChild(createEl('span', '', '已选组件'));
+    const boundsStat = createEl('div', 'inspector-stat');
+    boundsStat.appendChild(createEl('strong', '', `${bounds.colSpan} × ${bounds.rowSpan}`));
+    boundsStat.appendChild(createEl('span', '', '网格跨度'));
+    statGrid.appendChild(countStat);
+    statGrid.appendChild(boundsStat);
+    summary.appendChild(statGrid);
+    dom.inspector.appendChild(summary);
+
+    const listSection = createSection('组件列表');
+    const list = createEl('div', 'multi-selection-list');
+    components.forEach((component) => {
+        const item = createEl('div', 'multi-selection-item');
+        const copy = createEl('div', 'multi-selection-copy');
+        copy.appendChild(createEl('strong', '', getComponentLabel(component.type)));
+        copy.appendChild(createEl('small', '', component.id));
+        item.appendChild(copy);
+        item.appendChild(createEl(
+            'span',
+            'multi-selection-grid',
+            `${component.grid.colSpan} × ${component.grid.rowSpan}`
+        ));
+        list.appendChild(item);
+    });
+    listSection.appendChild(list);
+    dom.inspector.appendChild(listSection);
+
+    const actions = createEl('div', 'inspector-actions');
+    const duplicateBtn = createEl('button', 'inspector-btn', '复制所选');
+    duplicateBtn.type = 'button';
+    duplicateBtn.addEventListener('click', duplicateSelectedComponent);
+    const deleteBtn = createEl('button', 'inspector-btn danger', '删除所选');
+    deleteBtn.type = 'button';
+    deleteBtn.addEventListener('click', deleteSelectedComponent);
+    actions.appendChild(duplicateBtn);
+    actions.appendChild(deleteBtn);
+    dom.inspector.appendChild(actions);
+
+    dom.inspector.appendChild(createEl(
+        'div',
+        'inspector-note',
+        '拖动任一选中组件可整体移动；多选模式下不支持单组件属性和缩放编辑。'
+    ));
+}
+
 function renderPanelInspector(panel) {
     dom.inspector.appendChild(createObjectHead(
         '▦',
@@ -988,6 +1318,14 @@ function renameComponent(oldId, rawNewId) {
     createComponentView(panelView, component);
     if (state.selected?.kind === 'component' && state.selected.componentId === oldId) {
         state.selected.componentId = newId;
+    } else if (state.selected?.kind === 'components') {
+        const index = state.selected.componentIds.indexOf(oldId);
+        if (index !== -1) {
+            state.selected.componentIds[index] = newId;
+            if (state.selected.primaryId === oldId) {
+                state.selected.primaryId = newId;
+            }
+        }
     }
     pushHistory();
     scheduleAutosave();
@@ -1032,6 +1370,48 @@ function setComponentGrid(panelId, componentId, grid, options = {}) {
         scheduleAutosave();
     }
     if (options.refreshInspector) renderInspector();
+    updateStatus();
+    return true;
+}
+
+function moveSelectionBy(rowDelta, colDelta) {
+    const selected = state.selected;
+    if (!selected || selected.kind === 'panel') return false;
+    const panel = findPanelModel(selected.panelId);
+    const ids = getSelectedComponentIds();
+    if (!panel || !ids.length) return false;
+
+    const models = ids
+        .map((id) => findComponentModel(panel.id, id))
+        .filter(Boolean);
+    if (!models.length) return false;
+
+    const grids = models.map((model) => ({
+        row: model.grid.row + rowDelta,
+        col: model.grid.col + colDelta,
+        rowSpan: model.grid.rowSpan,
+        colSpan: model.grid.colSpan,
+    }));
+    if (!isGroupFree(panel, grids, ids)) {
+        return false;
+    }
+
+    models.forEach((model, index) => {
+        const grid = grids[index];
+        model.grid = grid;
+        const view = state.componentViews.get(model.id);
+        if (view) {
+            view.component.setGridPosition(
+                grid.row,
+                grid.col,
+                grid.rowSpan,
+                grid.colSpan
+            );
+        }
+    });
+    scheduleHistory(250);
+    scheduleAutosave();
+    renderInspector();
     updateStatus();
     return true;
 }
@@ -1152,30 +1532,158 @@ function removeComponent(panelId, componentId, options = {}) {
     }
     panel.components.splice(index, 1);
 
-    if (state.selected?.kind === 'component' && state.selected.componentId === componentId) {
-        selectPanel(panelId);
-    } else {
-        refreshSelectionUI();
-        renderInspector();
+    if (!options.keepSelection) {
+        if (state.selected?.kind === 'component' &&
+            state.selected.componentId === componentId) {
+            selectPanel(panelId);
+        } else if (state.selected?.kind === 'components' &&
+            state.selected.componentIds.includes(componentId)) {
+            const remaining = state.selected.componentIds.filter((id) => id !== componentId);
+            if (!remaining.length) {
+                selectPanel(panelId);
+            } else if (remaining.length === 1) {
+                selectComponent(panelId, remaining[0]);
+            } else {
+                selectComponents(
+                    panelId,
+                    remaining,
+                    state.selected.primaryId === componentId
+                        ? remaining[0]
+                        : state.selected.primaryId
+                );
+            }
+        } else {
+            refreshSelectionUI();
+            renderInspector();
+        }
     }
 
     if (options.push !== false) {
         pushHistory();
         scheduleAutosave();
     }
-    setMessage('组件已删除');
+    if (!options.silent) setMessage('组件已删除');
     return true;
 }
 
 function deleteSelectedComponent() {
     const selected = state.selected;
-    if (selected?.kind !== 'component') return;
-    removeComponent(selected.panelId, selected.componentId);
+    if (selected?.kind === 'component') {
+        removeComponent(selected.panelId, selected.componentId);
+        return;
+    }
+    if (selected?.kind !== 'components') return;
+
+    const panelId = selected.panelId;
+    const componentIds = [...selected.componentIds];
+    componentIds.forEach((componentId) => {
+        removeComponent(panelId, componentId, {
+            push: false,
+            keepSelection: true,
+            silent: true,
+        });
+    });
+    selectPanel(panelId);
+    pushHistory();
+    scheduleAutosave();
+    setMessage(`已删除 ${componentIds.length} 个组件`);
+}
+
+function findGroupDuplicateOffset(panel, models, bounds) {
+    const rowMin = 1 - bounds.row;
+    const rowMax = panel.rows - (bounds.row + bounds.rowSpan - 1);
+    const colMin = 1 - bounds.col;
+    const colMax = panel.columns - (bounds.col + bounds.colSpan - 1);
+
+    const isOffsetFree = (rowOffset, colOffset) => {
+        if (rowOffset < rowMin || rowOffset > rowMax ||
+            colOffset < colMin || colOffset > colMax) {
+            return false;
+        }
+        const grids = models.map((model) => ({
+            row: model.grid.row + rowOffset,
+            col: model.grid.col + colOffset,
+            rowSpan: model.grid.rowSpan,
+            colSpan: model.grid.colSpan,
+        }));
+        return isGroupFree(panel, grids, []);
+    };
+
+    const preferred = [
+        { row: 0, col: Math.max(1, bounds.colSpan) },
+        { row: Math.max(1, bounds.rowSpan), col: 0 },
+    ];
+    for (const offset of preferred) {
+        if (isOffsetFree(offset.row, offset.col)) return offset;
+    }
+
+    let best = null;
+    let bestScore = Infinity;
+    for (let rowOffset = rowMin; rowOffset <= rowMax; rowOffset += 1) {
+        for (let colOffset = colMin; colOffset <= colMax; colOffset += 1) {
+            if (rowOffset === 0 && colOffset === 0) continue;
+            if (!isOffsetFree(rowOffset, colOffset)) continue;
+            const score = Math.abs(rowOffset) * 2 +
+                Math.abs(colOffset - Math.max(1, bounds.colSpan));
+            if (score < bestScore) {
+                bestScore = score;
+                best = { row: rowOffset, col: colOffset };
+            }
+        }
+    }
+    return best;
 }
 
 function duplicateSelectedComponent() {
     const selected = state.selected;
-    if (selected?.kind !== 'component') return;
+    if (!selected) return;
+
+    if (selected.kind === 'components') {
+        const panel = findPanelModel(selected.panelId);
+        if (!panel) return;
+        const models = selected.componentIds
+            .map((id) => findComponentModel(selected.panelId, id))
+            .filter(Boolean);
+        if (models.length <= 1) {
+            if (models.length === 1) {
+                selectComponent(selected.panelId, models[0].id);
+                duplicateSelectedComponent();
+            }
+            return;
+        }
+
+        const bounds = getGroupBounds(models);
+        const offset = findGroupDuplicateOffset(panel, models, bounds);
+        if (!offset) {
+            toast('当前面板没有足够的空闲空间', 'error');
+            return;
+        }
+
+        const panelView = state.panelViews.get(panel.id);
+        if (!panelView) return;
+        const used = collectUsedComponentIds();
+        const copies = models.map((source) => ({
+            id: makeUniqueId(`${source.id}-copy`, used),
+            type: source.type,
+            grid: {
+                ...source.grid,
+                row: source.grid.row + offset.row,
+                col: source.grid.col + offset.col,
+            },
+            props: normalizeComponentProps(source.type, cloneProps(source.props)),
+        }));
+        copies.forEach((copy) => {
+            panel.components.push(copy);
+            createComponentView(panelView, copy);
+        });
+        selectComponents(panel.id, copies.map((copy) => copy.id), copies[0].id);
+        pushHistory();
+        scheduleAutosave();
+        setMessage(`已复制 ${copies.length} 个组件`);
+        return;
+    }
+
+    if (selected.kind !== 'component') return;
     const location = findComponentLocation(selected.componentId);
     if (!location) return;
 
@@ -1365,9 +1873,18 @@ function capturePointer(element, event) {
     }
 }
 
-function beginMoveDrag(event, view) {
+function beginMoveDrag(event, view, componentIds = null) {
     const panelView = state.panelViews.get(view.panelId);
     if (!panelView) return;
+    const ids = (Array.isArray(componentIds) && componentIds.length
+        ? componentIds
+        : [view.model.id]).filter((id) => state.componentViews.has(id));
+
+    if (ids.length > 1) {
+        beginGroupMoveDrag(event, view, ids);
+        return;
+    }
+
     const startCell = pointToCell(panelView, event.clientX, event.clientY);
     const drag = {
         mode: 'move',
@@ -1391,6 +1908,51 @@ function beginMoveDrag(event, view) {
     attachDragListeners();
     capturePointer(view.overlay, event);
     setMessage('拖动组件以移动位置；松开鼠标完成');
+}
+
+function beginGroupMoveDrag(event, view, componentIds) {
+    const panelView = state.panelViews.get(view.panelId);
+    if (!panelView) return;
+    const models = componentIds
+        .map((id) => findComponentModel(view.panelId, id))
+        .filter(Boolean);
+    if (models.length <= 1) {
+        beginMoveDrag(event, view, [view.model.id]);
+        return;
+    }
+
+    const startCell = pointToCell(panelView, event.clientX, event.clientY);
+    const group = getGroupBounds(models);
+    const startGrids = new Map(
+        models.map((component) => [component.id, { ...component.grid }])
+    );
+
+    state.drag = {
+        mode: 'moveGroup',
+        pointerId: event.pointerId,
+        componentIds: models.map((component) => component.id),
+        sourcePanelId: view.panelId,
+        startGroup: group,
+        startGrids,
+        startPointerCell: startCell,
+        grabOffset: {
+            row: startCell.row - group.row,
+            col: startCell.col - group.col,
+        },
+        lastValid: {
+            panelId: view.panelId,
+            delta: { row: 0, col: 0 },
+        },
+        moved: false,
+        sourceView: view,
+        sourceViews: models
+            .map((component) => state.componentViews.get(component.id))
+            .filter(Boolean),
+    };
+    document.body.classList.add('is-editing-drag');
+    attachDragListeners();
+    capturePointer(view.overlay, event);
+    setMessage(`已选择 ${componentIds.length} 个组件，拖动整组移动`);
 }
 
 function beginResizeDrag(event, view, handle) {
@@ -1427,6 +1989,8 @@ function onDragPointerMove(event) {
 
     if (drag.mode === 'move') {
         updateMoveDrag(event, drag);
+    } else if (drag.mode === 'moveGroup') {
+        updateGroupMoveDrag(event, drag);
     } else if (drag.mode === 'resize') {
         updateResizeDrag(event, drag);
     }
@@ -1501,6 +2065,117 @@ function updateMoveDrag(event, drag) {
     if (previewPanel && previewGrid) {
         setMessage(`目标位置：第 ${previewGrid.row} 行 / 第 ${previewGrid.col} 列`);
     }
+}
+
+function updateGroupMoveDrag(event, drag) {
+    const panelView = state.panelViews.get(drag.sourcePanelId);
+    if (!panelView) return;
+    const panel = panelView.model;
+    const pointerCell = pointToCell(panelView, event.clientX, event.clientY);
+    const maxGroupRow = panel.rows - drag.startGroup.rowSpan + 1;
+    const maxGroupCol = panel.columns - drag.startGroup.colSpan + 1;
+    const groupRow = clampInt(
+        pointerCell.row - drag.grabOffset.row,
+        1,
+        maxGroupRow
+    );
+    const groupCol = clampInt(
+        pointerCell.col - drag.grabOffset.col,
+        1,
+        maxGroupCol
+    );
+    const delta = {
+        row: groupRow - drag.startGroup.row,
+        col: groupCol - drag.startGroup.col,
+    };
+    const grids = drag.componentIds.map((id) => {
+        const start = drag.startGrids.get(id);
+        return {
+            row: start.row + delta.row,
+            col: start.col + delta.col,
+            rowSpan: start.rowSpan,
+            colSpan: start.colSpan,
+        };
+    });
+    const valid = isGroupFree(panel, grids, drag.componentIds);
+
+    if (!valid) {
+        setMessage('该位置与其他组件重叠，无法移动');
+        return;
+    }
+
+    drag.lastValid = { panelId: panel.id, delta };
+    drag.moved = delta.row !== 0 || delta.col !== 0;
+    drag.sourceViews.forEach((view, index) => {
+        const grid = grids[index];
+        view.component.setGridPosition(
+            grid.row,
+            grid.col,
+            grid.rowSpan,
+            grid.colSpan
+        );
+    });
+    setMessage(`目标位置：第 ${groupRow} 行 / 第 ${groupCol} 列`);
+}
+
+function restoreGroupGrids(drag) {
+    drag.sourceViews?.forEach((view) => {
+        const grid = drag.startGrids.get(view.model.id);
+        if (!grid) return;
+        view.component.setGridPosition(
+            grid.row,
+            grid.col,
+            grid.rowSpan,
+            grid.colSpan
+        );
+    });
+}
+
+function finishGroupMoveDrag(drag, cancelled) {
+    if (cancelled || !drag.moved) {
+        restoreGroupGrids(drag);
+        setMessage(cancelled ? '操作已取消' : '就绪');
+        return;
+    }
+
+    const delta = drag.lastValid?.delta;
+    if (!delta || (delta.row === 0 && delta.col === 0)) {
+        restoreGroupGrids(drag);
+        setMessage('就绪');
+        return;
+    }
+
+    let targetRow = Infinity;
+    let targetCol = Infinity;
+    drag.componentIds.forEach((id) => {
+        const model = findComponentModel(drag.sourcePanelId, id);
+        const start = drag.startGrids.get(id);
+        if (!model || !start) return;
+        const grid = {
+            row: start.row + delta.row,
+            col: start.col + delta.col,
+            rowSpan: start.rowSpan,
+            colSpan: start.colSpan,
+        };
+        model.grid = grid;
+        targetRow = Math.min(targetRow, grid.row);
+        targetCol = Math.min(targetCol, grid.col);
+        const view = state.componentViews.get(id);
+        if (view) {
+            view.component.setGridPosition(
+                grid.row,
+                grid.col,
+                grid.rowSpan,
+                grid.colSpan
+            );
+        }
+    });
+
+    pushHistory();
+    scheduleAutosave();
+    setMessage(
+        `已移动 ${drag.componentIds.length} 个组件到第 ${targetRow} 行 / 第 ${targetCol} 列`
+    );
 }
 
 function updateResizeDrag(event, drag) {
@@ -1608,6 +2283,14 @@ function finishDrag(cancelled) {
     drag.ghostEl?.remove();
     drag.sourceView?.wrapper.classList.remove('is-drag-source');
     state.drag = null;
+
+    if (drag.mode === 'moveGroup') {
+        finishGroupMoveDrag(drag, cancelled);
+        refreshSelectionUI();
+        renderInspector();
+        updateStatus();
+        return;
+    }
 
     const sourceView = state.componentViews.get(drag.componentId);
     if (!sourceView) {
@@ -1854,7 +2537,7 @@ async function importProjectFile(file) {
 
 // ==================== 预览 ====================
 function togglePreview() {
-    if (state.drag) return;
+    if (state.drag || state.marquee) return;
     closeExportMenu();
     state.preview = !state.preview;
     document.body.classList.toggle('preview-mode', state.preview);
@@ -1881,6 +2564,11 @@ function handleKeyDown(event) {
     if (event.key === 'Escape') {
         if (state.preview) {
             togglePreview();
+            return;
+        }
+        if (state.marquee) {
+            clearMarqueeArtifacts();
+            setMessage('已取消框选');
             return;
         }
         if (state.drag) {
@@ -1960,14 +2648,17 @@ function handleKeyDown(event) {
     }
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (state.selected?.kind === 'component') {
+        if (state.selected?.kind === 'component' ||
+            state.selected?.kind === 'components') {
             event.preventDefault();
             deleteSelectedComponent();
         }
         return;
     }
 
-    if (state.selected?.kind === 'component' && event.key.startsWith('Arrow')) {
+    if ((state.selected?.kind === 'component' ||
+        state.selected?.kind === 'components') &&
+        event.key.startsWith('Arrow')) {
         event.preventDefault();
         const delta = {
             ArrowUp: { row: -1, col: 0 },
@@ -1976,17 +2667,8 @@ function handleKeyDown(event) {
             ArrowRight: { row: 0, col: 1 },
         }[event.key];
         if (!delta) return;
-        const location = findComponentLocation(state.selected.componentId);
-        if (!location) return;
-        const candidate = {
-            ...location.component.grid,
-            row: location.component.grid.row + delta.row,
-            col: location.component.grid.col + delta.col,
-        };
-        if (setComponentGrid(location.panel.id, state.selected.componentId, candidate, { push: false })) {
-            scheduleHistory(250);
-            scheduleAutosave();
-            renderInspector();
+        if (moveSelectionBy(delta.row, delta.col)) {
+            setMessage('已移动所选组件');
         } else {
             toast('该方向无法移动：超出边界或与其他组件重叠', 'error', 1600);
         }
