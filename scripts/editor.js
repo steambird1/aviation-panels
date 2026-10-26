@@ -886,7 +886,23 @@ function createFieldRow(field, value, handlers = {}) {
         if (handlers.onCommit) handlers.onCommit();
     };
 
-    if (field.type === 'select') {
+    if (field.type === 'boolean') {
+        const wrap = createEl('div', 'field-checkbox');
+        input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = value === true;
+        const checkId = `field-check-${Math.random().toString(36).slice(2, 9)}`;
+        input.id = checkId;
+        const checkboxLabel = createEl('label', '', field.checkboxLabel || '启用');
+        checkboxLabel.htmlFor = checkId;
+        wrap.appendChild(input);
+        wrap.appendChild(checkboxLabel);
+        input.addEventListener('change', () => {
+            if (handlers.onInput) handlers.onInput(input.checked);
+            commit();
+        });
+        row.appendChild(wrap);
+    } else if (field.type === 'select') {
         input = document.createElement('select');
         const options = field.options || [];
         options.forEach((option) => {

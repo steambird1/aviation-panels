@@ -86,6 +86,130 @@ body {
     min-height: 0;
 }
 
+/* ========== 控件盖板 ========== */
+.component-wrapper.has-guard {
+    perspective: 260px;
+}
+
+.component-guard {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #8a672f;
+    border-radius: 6px;
+    background:
+        repeating-linear-gradient(
+            135deg,
+            rgba(255, 205, 95, 0.18) 0,
+            rgba(255, 205, 95, 0.18) 6px,
+            rgba(0, 0, 0, 0.06) 6px,
+            rgba(0, 0, 0, 0.06) 12px
+        ),
+        linear-gradient(155deg, #4b391d 0%, #8b6a30 42%, #c39a4b 52%, #5b4520 100%);
+    box-shadow:
+        0 6px 14px rgba(0, 0, 0, 0.58),
+        inset 0 2px 2px rgba(255, 255, 255, 0.22),
+        inset 0 -4px 6px rgba(0, 0, 0, 0.5);
+    color: #1d1507;
+    cursor: pointer;
+    transform-origin: top center;
+    transform: rotateX(0deg);
+    transition:
+        transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 0.22s ease;
+    user-select: none;
+}
+
+.component-guard-hinge {
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    width: 42%;
+    height: 5px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #e3d7b5, #796744);
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.component-guard-stripes {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(24, 17, 5, 0.26) 0,
+        rgba(24, 17, 5, 0.26) 7px,
+        transparent 7px,
+        transparent 14px
+    );
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.component-guard-label {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-main);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
+    pointer-events: none;
+}
+
+.component-guard:focus-visible,
+.component-guard-latch:focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+}
+
+.component-wrapper.is-guard-open .component-guard {
+    transform: translateY(-108%) rotateX(-78deg) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.component-guard-latch {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 41;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid #e3c27a;
+    background: linear-gradient(180deg, #e0b75a, #8c6226);
+    color: #241a0a;
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.component-wrapper.is-guard-open .component-guard-latch {
+    display: flex;
+}
+
+.component-wrapper.is-guard-closed > :not(.component-guard):not(.component-guard-latch):not(.editor-component-hit):not(.component-label) {
+    pointer-events: none;
+}
+
 .component-label {
     position: absolute;
     font-family: var(--font-main);
@@ -162,20 +286,26 @@ body {
 .btn-simple {
     width: 100%;
     height: 100%;
-    background: var(--bg-button);
-    border: 2px solid var(--border-color);
-    border-radius: 5px;
+    background: linear-gradient(180deg, #515661 0%, #3d424c 45%, #2b2f37 100%);
+    border: 1px solid #626773;
+    border-radius: 6px;
     cursor: pointer;
     font-family: var(--font-main);
     font-size: 13px;
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: 0.03em;
-    transition: all 0.08s ease;
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease,
+        box-shadow 0.08s ease,
+        transform 0.08s ease;
     position: relative;
     box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        0 4px 0 #171a1f,
+        0 6px 10px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.42);
     text-transform: uppercase;
     display: flex;
     align-items: center;
@@ -185,19 +315,24 @@ body {
     aspect-ratio: 2 / 1;
 }
 .btn-simple:hover {
-    background: var(--bg-button-hover);
-    border-color: var(--border-light);
+    background: linear-gradient(180deg, #5b616d 0%, #464b56 45%, #30343d 100%);
+    border-color: #747a88;
     box-shadow:
-        0 3px 8px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        0 5px 0 #171a1f,
+        0 8px 13px rgba(0, 0, 0, 0.58),
+        inset 0 1px 0 rgba(255, 255, 255, 0.26),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.4);
+    transform: translateY(-1px);
 }
 .btn-simple:active {
-    background: var(--bg-button-active);
-    border-color: #7a7d88;
+    background: linear-gradient(180deg, #30343d 0%, #3a3f49 55%, #464b56 100%);
+    border-color: #555a65;
     box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.5),
-        inset 0 2px 4px rgba(0, 0, 0, 0.3);
-    transform: translateY(1px);
+        0 1px 0 #171a1f,
+        0 2px 4px rgba(0, 0, 0, 0.5),
+        inset 0 3px 6px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: translateY(3px);
     transition: all 0.03s ease;
 }
 .btn-simple:focus-visible {
@@ -223,19 +358,25 @@ body {
 .btn-with-lights .btn-body {
     flex: 1;
     width: 100%;
-    background: var(--bg-button);
-    border: 2px solid var(--border-color);
-    border-radius: 5px;
+    background: linear-gradient(180deg, #515661 0%, #3d424c 45%, #2b2f37 100%);
+    border: 1px solid #626773;
+    border-radius: 6px;
     cursor: pointer;
     font-family: var(--font-main);
     font-size: 12px;
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: 0.03em;
-    transition: all 0.08s ease;
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease,
+        box-shadow 0.08s ease,
+        transform 0.08s ease;
     box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        0 3px 0 #171a1f,
+        0 5px 9px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.42);
     text-transform: uppercase;
     display: flex;
     align-items: center;
@@ -244,16 +385,19 @@ body {
     z-index: 2;
 }
 .btn-with-lights .btn-body:hover {
-    background: var(--bg-button-hover);
-    border-color: var(--border-light);
+    background: linear-gradient(180deg, #5b616d 0%, #464b56 45%, #30343d 100%);
+    border-color: #747a88;
+    transform: translateY(-1px);
 }
 .btn-with-lights .btn-body:active {
-    background: var(--bg-button-active);
-    border-color: #7a7d88;
+    background: linear-gradient(180deg, #30343d 0%, #3a3f49 55%, #464b56 100%);
+    border-color: #555a65;
     box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.5),
-        inset 0 2px 4px rgba(0, 0, 0, 0.3);
-    transform: translateY(1px);
+        0 1px 0 #171a1f,
+        0 2px 4px rgba(0, 0, 0, 0.5),
+        inset 0 3px 6px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: translateY(2px);
     transition: all 0.03s ease;
 }
 /* 上方指示灯 - 无外侧框 */
@@ -305,6 +449,7 @@ body {
 /* ========== 独立指示灯 ========== */
 .indicator-light {
     box-sizing: border-box;
+    position: relative;
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -329,16 +474,45 @@ body {
         background 0.15s ease,
         color 0.15s ease,
         border-color 0.15s ease,
-        box-shadow 0.15s ease;
+        box-shadow 0.15s ease,
+        transform 0.06s ease,
+        filter 0.06s ease;
     overflow: hidden;
+    cursor: pointer;
+}
+.indicator-light::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.2) 0%,
+        rgba(255, 255, 255, 0.04) 38%,
+        transparent 58%,
+        rgba(0, 0, 0, 0.18) 100%
+    );
+    pointer-events: none;
 }
 .indicator-light-text {
+    position: relative;
+    z-index: 1;
     display: block;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     line-height: 1.1;
+}
+.indicator-light:focus-visible,
+.indicator-light-group-lamp:focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+}
+.indicator-light.is-pressed,
+.indicator-light-group-lamp.is-pressed {
+    transform: translateY(1px) scale(0.985);
+    filter: brightness(0.82);
 }
 
 /* ========== 指示灯组 ========== */
@@ -352,12 +526,14 @@ body {
     grid-template-rows: repeat(3, minmax(0, 1fr));
     gap: 4px;
     padding: 0;
-    background: linear-gradient(180deg, #1b1f27, #11151b);
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
+    background: linear-gradient(180deg, #2d333d, #11151b 58%, #0b0e13);
+    border: 1px solid #59616e;
+    border-radius: 6px;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.04),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.45);
+        0 4px 10px rgba(0, 0, 0, 0.55),
+        0 1px 0 rgba(255, 255, 255, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        inset 0 -4px 8px rgba(0, 0, 0, 0.5);
     overflow: hidden;
 }
 .indicator-light-group-cell {
@@ -392,11 +568,14 @@ body {
     text-transform: uppercase;
     text-align: center;
     overflow: hidden;
+    cursor: pointer;
     transition:
         background 0.15s ease,
         color 0.15s ease,
         border-color 0.15s ease,
-        box-shadow 0.15s ease;
+        box-shadow 0.15s ease,
+        transform 0.06s ease,
+        filter 0.06s ease;
 }
 .indicator-light-group-lamp-text {
     display: block;
@@ -423,36 +602,67 @@ body {
 .knob-outer {
     position: relative;
     border-radius: 50%;
-    background: var(--bg-knob);
-    border: 2px solid var(--border-color);
+    background:
+        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.24), transparent 32%),
+        linear-gradient(145deg, #555a66 0%, #3a3e48 48%, #24272e 100%);
+    border: 1px solid #676c78;
     box-shadow:
-        0 3px 8px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        0 7px 14px rgba(0, 0, 0, 0.6),
+        0 2px 3px rgba(0, 0, 0, 0.45),
+        inset 0 2px 2px rgba(255, 255, 255, 0.2),
+        inset 0 -5px 7px rgba(0, 0, 0, 0.55);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.12s;
+}
+.knob-outer::before {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 0 2px 3px rgba(0, 0, 0, 0.55),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+    z-index: 0;
 }
 .knob-container:hover .knob-outer {
-    border-color: var(--border-light);
+    border-color: #7a808d;
+    box-shadow:
+        0 8px 16px rgba(0, 0, 0, 0.62),
+        0 3px 4px rgba(0, 0, 0, 0.45),
+        inset 0 2px 2px rgba(255, 255, 255, 0.24),
+        inset 0 -5px 7px rgba(0, 0, 0, 0.55);
+}
+.knob-container:active .knob-outer {
+    transform: translateY(1px);
 }
 .knob-inner {
-    border-radius: 50%;
-    background: var(--bg-knob-inner);
-    border: 1.5px solid #4a4d57;
     position: relative;
+    z-index: 2;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.12), transparent 42%),
+        radial-gradient(circle at 50% 50%, #333741 0%, #22252c 70%, #1a1d23 100%);
+    border: 1px solid #4a4f5a;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    box-shadow:
+        inset 0 3px 5px rgba(0, 0, 0, 0.55),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.07),
+        0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .knob-indicator {
     position: absolute;
+    z-index: 3;
     width: 2.5px;
-    background: #e8eaf0;
+    background: linear-gradient(180deg, #ffffff, #bfc5d0);
     border-radius: 1.5px;
     transform-origin: bottom center;
-    box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.65);
     pointer-events: none;
 }
 .knob-notch {
@@ -495,10 +705,13 @@ body {
 }
 .lever-slot {
     position: relative;
-    background: #1a1d22;
-    border: 2px solid #3a3d46;
+    background: linear-gradient(180deg, #0e1116 0%, #1b1f26 55%, #12161c 100%);
+    border: 1px solid #3b414c;
     border-radius: 6px;
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    box-shadow:
+        inset 0 3px 8px rgba(0, 0, 0, 0.8),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+        0 1px 0 rgba(255, 255, 255, 0.04);
     overflow: visible;
 }
 .lever-slot.vertical {
@@ -517,14 +730,17 @@ body {
 }
 .lever-handle {
     position: absolute;
-    background: #5a5d68;
-    border: 2px solid #7a7d88;
+    background:
+        linear-gradient(180deg, #858b98 0%, #5d626e 42%, #3b4049 100%);
+    border: 1px solid #8b919d;
     border-radius: 4px;
     cursor: grab;
     box-shadow:
-        0 2px 6px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transition: box-shadow 0.1s;
+        0 4px 0 #171a1f,
+        0 6px 10px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+    transition: box-shadow 0.1s, filter 0.1s;
     z-index: 5;
     display: flex;
     align-items: center;
@@ -532,16 +748,20 @@ body {
 }
 .lever-handle:active {
     cursor: grabbing;
+    filter: brightness(0.86);
     box-shadow:
-        0 1px 3px rgba(0, 0, 0, 0.5),
-        inset 0 2px 3px rgba(0, 0, 0, 0.3);
-    border-color: #9a9da8;
+        0 1px 0 #171a1f,
+        0 2px 4px rgba(0, 0, 0, 0.5),
+        inset 0 3px 5px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    border-color: #a0a6b2;
 }
 .lever-handle::after {
     content: '';
     position: absolute;
-    background: #8a8d96;
+    background: linear-gradient(180deg, #c3c8d2, #707682);
     border-radius: 1px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
 }
 .lever-slot.vertical .lever-handle {
     width: 28px;

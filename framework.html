@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空客驾驶舱风格组件库</title>
     <link rel="stylesheet" href="styles/inst_general.css" />
-    <link rel="stylesheet" href="styles/panel_style.css?v=20261025" />
+    <link rel="stylesheet" href="styles/panel_style.css?v=20261027" />
 </head>
 <body>
 
@@ -25,6 +25,8 @@
             console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, Lever, LeverContinuous');
             console.log('全局函数: updateDisplay({cmpName, upperLight, lowerLight})');
             console.log('组件文本标识: labelPosition = top | bottom | left | right；左右侧可加 labelOrientation: "vertical" 竖排');
+            console.log('指示灯支持 click（灯组为 lightclick + click），不会自动改变亮度。');
+            console.log('盖板：点击盖板打开，点击右上角 × 关闭；带盖板的按钮/旋钮/指示灯需要先打开盖板。');
             console.log('所有组件通过 CockpitComponents 命名空间访问。');
 
             // ==================== 演示代码 ====================
@@ -501,6 +503,59 @@
 
                 lightGroup.on('change', (data) => {
                     console.log(`指示灯组 ${data.cmpName} 状态: ${data.brightnesses.map((v) => Math.round(v)).join(', ')}`);
+                });
+                lightGroup.on('lightclick', (data) => {
+                    console.log(`指示灯组点击: ${data.cmpName} #${data.index} (${data.text})`);
+                });
+
+                // --- 带盖板控件演示 ---
+                const panel4 = new Panel('panel-4', {
+                    columns: 8,
+                    rows: 2,
+                    cellSize: 44,
+                    gap: 8,
+                    panelId: 'guarded-panel',
+                });
+
+                const guardedButton = new ButtonSimple('guard-fire', {
+                    text: 'FIRE',
+                    label: 'GUARDED BUTTON',
+                    labelPosition: 'top',
+                    guard: true,
+                });
+                panel4.addComponent(guardedButton, { row: 1, col: 1, rowSpan: 1, colSpan: 2 });
+                guardedButton.on('click', () => console.log('带盖板按钮已按下'));
+                guardedButton.on('guardchange', (data) => {
+                    console.log(`盖板 ${data.cmpName}: ${data.open ? '打开' : '关闭'}`);
+                });
+
+                const guardedLight = new IndicatorLight('guard-light', {
+                    text: 'ARM',
+                    backgroundColor: 'red',
+                    foregroundColor: 'white',
+                    initialBrightness: 0,
+                    guard: true,
+                    label: 'GUARDED LIGHT',
+                    labelPosition: 'top',
+                });
+                panel4.addComponent(guardedLight, { row: 1, col: 4, rowSpan: 1, colSpan: 2 });
+                guardedLight.on('click', () => {
+                    guardedLight.setLit(guardedLight.getBrightness() <= 0);
+                    console.log(`带盖板指示灯点击: ${guardedLight.getBrightness() > 0 ? 'ON' : 'OFF'}`);
+                });
+
+                const guardedKnob = new KnobContinuous('guard-knob', {
+                    minValue: 0,
+                    maxValue: 100,
+                    initialValue: 50,
+                    diameter: 50,
+                    label: 'GUARDED KNOB',
+                    labelPosition: 'top',
+                    guard: true,
+                });
+                panel4.addComponent(guardedKnob, { row: 1, col: 7, rowSpan: 2, colSpan: 2 });
+                guardedKnob.on('change', (data) => {
+                    console.log(`带盖板旋钮值: ${data.value.toFixed(0)}`);
                 });
 
                 console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');

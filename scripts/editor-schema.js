@@ -34,6 +34,13 @@ const LABEL_FIELDS = [
     },
 ];
 
+const GUARD_FIELD = {
+    key: 'guard',
+    label: '带盖板',
+    type: 'boolean',
+    hint: '开启后需要先打开盖板才能操作',
+};
+
 function withLabelFields(fields) {
     return [...fields, ...LABEL_FIELDS];
 }
@@ -53,12 +60,14 @@ export const COMPONENT_TYPES = {
         defaultGrid: { colSpan: 2, rowSpan: 1 },
         defaults: {
             text: 'BTN',
+            guard: false,
             label: 'BUTTON',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
             { key: 'text', label: '按键文本', type: 'text', placeholder: '例如 AP1' },
+            GUARD_FIELD,
         ]),
     },
 
@@ -77,6 +86,7 @@ export const COMPONENT_TYPES = {
             lowerLightText: 'FAULT',
             initialUpperBrightness: 0,
             initialLowerBrightness: 0,
+            guard: false,
             label: 'BUTTON',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -89,6 +99,7 @@ export const COMPONENT_TYPES = {
             COLOR('lowerLightColor', '下方灯颜色'),
             { key: 'lowerLightText', label: '下方灯文本', type: 'text' },
             NUMBER('initialLowerBrightness', '下方灯亮度', { min: 0, max: 100, step: 1 }),
+            GUARD_FIELD,
         ]),
     },
 
@@ -104,6 +115,7 @@ export const COMPONENT_TYPES = {
             backgroundColor: 'green',
             foregroundColor: 'white',
             initialBrightness: 0,
+            guard: false,
             label: 'INDICATOR',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -113,6 +125,7 @@ export const COMPONENT_TYPES = {
             COLOR('backgroundColor', '背景 / 发光颜色'),
             COLOR('foregroundColor', '前景 / 文字颜色'),
             NUMBER('initialBrightness', '亮度', { min: 0, max: 100, step: 1 }),
+            GUARD_FIELD,
         ]),
     },
 
@@ -170,6 +183,7 @@ export const COMPONENT_TYPES = {
             diameter: 50,
             arcStartAngle: 210,
             arcEndAngle: 330,
+            guard: false,
             label: 'KNOB',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -180,6 +194,7 @@ export const COMPONENT_TYPES = {
             NUMBER('diameter', '直径 (px)', { min: 24, max: 160, step: 1, integer: true }),
             NUMBER('arcStartAngle', '起始角度', { min: -360, max: 360, step: 1 }),
             NUMBER('arcEndAngle', '结束角度', { min: -360, max: 360, step: 1 }),
+            GUARD_FIELD,
         ]),
     },
 
@@ -198,6 +213,7 @@ export const COMPONENT_TYPES = {
             arcStartAngle: 210,
             arcEndAngle: 330,
             valueDisplayPrecision: 0,
+            guard: false,
             label: 'KNOB',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -210,6 +226,7 @@ export const COMPONENT_TYPES = {
             NUMBER('arcStartAngle', '起始角度', { min: -360, max: 360, step: 1 }),
             NUMBER('arcEndAngle', '结束角度', { min: -360, max: 360, step: 1 }),
             NUMBER('valueDisplayPrecision', '小数位', { min: 0, max: 4, step: 1, integer: true }),
+            GUARD_FIELD,
         ]),
     },
 
@@ -225,6 +242,7 @@ export const COMPONENT_TYPES = {
             valuePerRevolution: 100,
             diameter: 50,
             valueDisplayPrecision: 0,
+            guard: false,
             label: 'KNOB',
             labelPosition: 'top',
             labelOrientation: 'horizontal',
@@ -234,6 +252,7 @@ export const COMPONENT_TYPES = {
             NUMBER('valuePerRevolution', '每圈变化量', { step: 1 }),
             NUMBER('diameter', '直径 (px)', { min: 24, max: 160, step: 1, integer: true }),
             NUMBER('valueDisplayPrecision', '小数位', { min: 0, max: 4, step: 1, integer: true }),
+            GUARD_FIELD,
         ]),
     },
 
@@ -466,6 +485,10 @@ export function normalizeComponentProps(type, rawProps = {}) {
                 props[field.key] = allowed.includes(String(value)) ? String(value) : fallback;
                 break;
             }
+            case 'boolean':
+                props[field.key] = value === true || value === 'true' ||
+                    value === 1 || value === '1';
+                break;
             case 'color':
             case 'text':
             default:

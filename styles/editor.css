@@ -790,6 +790,30 @@ body.is-marquee-dragging {
     line-height: 1.35;
 }
 
+.field-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--editor-line);
+    background: #0f1319;
+}
+
+.field-checkbox input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--editor-accent);
+    cursor: pointer;
+}
+
+.field-checkbox label {
+    color: var(--editor-text);
+    font-size: 10px;
+    cursor: pointer;
+}
+
 .field-color-wrap {
     display: flex;
     gap: 6px;

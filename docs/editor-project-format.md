@@ -172,6 +172,42 @@ type ComponentType =
 | `labelPosition` | string | `"top"` | `"top"` / `"bottom"` / `"left"` / `"right"` | 标签相对组件的位置。 |
 | `labelOrientation` | string | `"horizontal"` | `"horizontal"` / `"vertical"` | 标签文字方向。`vertical` 仅在标签位于左侧或右侧时生效。 |
 
+### 4.1 盖板属性（可选）
+
+以下组件支持保护盖板：
+
+- `ButtonSimple`
+- `ButtonWithLights`
+- `IndicatorLight`
+- `KnobDiscrete`
+- `KnobContinuous`
+- `KnobInfinite`
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `guard` | boolean | `false` | 是否显示保护盖板。开启后，必须先打开盖板才能操作组件。 |
+
+盖板初始状态始终为关闭，打开/关闭状态不会写入项目 JSON。运行时可以调用组件方法控制：
+
+```js
+const button = getComponentByName('btn-fire');
+
+button.openGuard();
+button.closeGuard();
+button.toggleGuard();
+button.isGuardOpen();
+```
+
+盖板状态变化时会触发 `guardchange` 事件，并额外触发 `guardopen` / `guardclose`：
+
+```js
+button.on('guardchange', ({ cmpName, open }) => {
+  console.log(cmpName, open ? '打开' : '关闭');
+});
+```
+
+> `IndicatorLightGroup` 暂不支持盖板。盖板只影响运行时操作，不改变项目 JSON 的事件模型。
+
 ---
 
 ## 5. 颜色格式
@@ -228,6 +264,8 @@ type ComponentType =
 
 > `默认网格` 是编辑器从组件库拖入组件时使用的初始跨度。JSON 中的 `grid` 字段才是最终布局依据。`Display` 的默认跨度还会根据 `width`、`height` 和当前面板的 `cellSize`、`gap` 自动换算。
 
+> 所有非 `Display` 组件都使用统一的 3D 立体外观（按钮、指示灯、旋钮、拨杆等）。该外观只影响渲染，不会向项目 JSON 写入额外字段。
+
 ---
 
 ### 6.1 ButtonSimple — 普通按钮
@@ -249,6 +287,7 @@ type ComponentType =
 | 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `text` | string | `"BTN"` | 按钮内部文本。 |
+| `guard` | boolean | `false` | 是否显示保护盖板。 |
 | `label` | string | `"BUTTON"` | 外部标签。 |
 | `labelPosition` | string | `"top"` | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | 标签方向。 |
@@ -286,6 +325,7 @@ type ComponentType =
 | `lowerLightText` | string | `"FAULT"` | — | 下方指示灯文本。 |
 | `initialUpperBrightness` | number | `0` | `0 ~ 100` | 上方指示灯初始亮度。 |
 | `initialLowerBrightness` | number | `0` | `0 ~ 100` | 下方指示灯初始亮度。 |
+| `guard` | boolean | `false` | — | 是否显示保护盖板。 |
 | `label` | string | `"BUTTON"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
@@ -317,11 +357,22 @@ type ComponentType =
 | `backgroundColor` | string | `"green"` | CSS 颜色 | 点亮时的背景 / 发光颜色。 |
 | `foregroundColor` | string | `"white"` | CSS 颜色 | 文字颜色。 |
 | `initialBrightness` | number | `0` | `0 ~ 100` | 初始亮度。`0` 为熄灭，仍保留暗淡背景。 |
+| `guard` | boolean | `false` | — | 是否显示保护盖板。 |
 | `label` | string | `"INDICATOR"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
 
 `IndicatorLight` 的亮灯区域会铺满整个组件区域。
+
+指示灯支持点击和按下效果。点击时触发 `click` 事件，但**不会自动改变亮度**：
+
+```js
+const light = getComponentByName('light-warn');
+
+light.on('click', ({ cmpName, event }) => {
+  updateDisplay({ cmpName, upperLight: 90 });
+});
+```
 
 运行时可通过 `updateDisplay()` 更新：
 
@@ -361,6 +412,7 @@ updateDisplay({
 | `diameter` | number | `50` | `24 ~ 160` | 旋钮直径，单位 px。 |
 | `arcStartAngle` | number | `210` | `-360 ~ 360` | 刻度弧起始角度。 |
 | `arcEndAngle` | number | `330` | `-360 ~ 360` | 刻度弧结束角度。 |
+| `guard` | boolean | `false` | — | 是否显示保护盖板。 |
 | `label` | string | `"KNOB"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
@@ -398,6 +450,7 @@ updateDisplay({
 | `arcStartAngle` | number | `210` | `-360 ~ 360` | 刻度弧起始角度。 |
 | `arcEndAngle` | number | `330` | `-360 ~ 360` | 刻度弧结束角度。 |
 | `valueDisplayPrecision` | number | `0` | `0 ~ 4` | 当前值显示的小数位数。 |
+| `guard` | boolean | `false` | — | 是否显示保护盖板。 |
 | `label` | string | `"KNOB"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
@@ -429,6 +482,7 @@ updateDisplay({
 | `valuePerRevolution` | number | `100` | — | 每旋转 360° 对应的数值变化量。 |
 | `diameter` | number | `50` | `24 ~ 160` | 旋钮直径，单位 px。 |
 | `valueDisplayPrecision` | number | `0` | `0 ~ 4` | 当前值显示的小数位数。 |
+| `guard` | boolean | `false` | — | 是否显示保护盖板。 |
 | `label` | string | `"KNOB"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
@@ -592,6 +646,18 @@ attitude.updateDisplay(5, -10);
 ```
 
 每颗灯占据灯组中的一个单元格；`gap` 是灯与灯之间的实际间距。灯组内部不使用单元格边框或表格线，`gap: 0` 时灯会直接相邻。
+
+每颗灯都支持点击和按下效果，点击时触发 `lightclick`，同时组件本身也会触发 `click`：
+
+```js
+const group = getComponentByName('light-group');
+
+group.on('lightclick', ({ index, brightness, text }) => {
+  console.log(`第 ${index} 颗灯：${text}，当前亮度 ${brightness}`);
+});
+```
+
+点击不会自动改变亮度，需要自行调用 `setLightBrightness()` 或 `updateDisplay()`。
 
 #### 运行时更新
 
@@ -835,6 +901,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
 14. 检测到组件重叠时产生警告，但不会自动调整已有布局。
 15. `version` 会被规范化为当前版本 `1`。
 16. `name` 为空时会回退为 `"未命名项目"`。
+17. 布尔属性接受 `true`、`"true"`、`1`、`"1"`，其他值视为 `false`；缺少 `guard` 时按 `false` 处理，兼容旧项目。
 
 对于 `IndicatorLightGroup`，`texts` 和 `brightness` 会按 `rows × columns` 使用：缺少的项按空文本 / `0` 亮度处理，多余的项会被忽略。
 
@@ -954,4 +1021,5 @@ button.on('click', () => {
 - 编辑器会将读取到的 `version` 统一规范化为 `1`。
 - 未知顶层字段会被忽略。
 - 未知组件类型会被跳过并给出警告。
+- `guard` 为可选字段；旧项目未提供时默认 `false`，不影响加载。
 - 如果未来增加新的组件类型或字段，建议递增 `version` 并在此文档中补充说明。

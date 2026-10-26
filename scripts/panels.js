@@ -76,7 +76,8 @@ function applyIndicatorLightStyle(element, brightness, backgroundColor, foregrou
         element.style.background = getDimColor(bgColor, 18);
         element.style.color = getDimColor(fgColor, 32);
         element.style.borderColor = getDimColor(bgColor, 34);
-        element.style.boxShadow = 'inset 0 2px 6px rgba(0, 0, 0, 0.55)';
+        element.style.boxShadow =
+            'inset 0 2px 2px rgba(255, 255, 255, 0.14), inset 0 -3px 6px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.45)';
         element.style.textShadow = 'none';
         return;
     }
@@ -88,8 +89,55 @@ function applyIndicatorLightStyle(element, brightness, backgroundColor, foregrou
     element.style.color = fgColor;
     element.style.borderColor = bgColor;
     element.style.boxShadow =
-        `0 0 ${glowSize}px ${bgColor}, inset 0 0 ${glowSize * 0.6}px ${bgColor}`;
+        `0 0 ${glowSize}px ${bgColor}, inset 0 0 ${glowSize * 0.6}px ${bgColor}, ` +
+        'inset 0 2px 2px rgba(255, 255, 255, 0.28), inset 0 -3px 5px rgba(0, 0, 0, 0.3)';
     element.style.textShadow = `0 0 ${3 + intensity * 6}px ${fgColor}`;
+}
+
+function bindPressableElement(element, onActivate) {
+    if (!element) return;
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+
+    let pressed = false;
+    const setPressed = (value) => {
+        pressed = value;
+        element.classList.toggle('is-pressed', pressed);
+    };
+
+    element.addEventListener('pointerdown', (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        setPressed(true);
+        if (event.pointerId !== undefined &&
+            typeof element.setPointerCapture === 'function') {
+            try {
+                element.setPointerCapture(event.pointerId);
+            } catch (error) {
+                // 捕获失败不影响普通点击
+            }
+        }
+    });
+    element.addEventListener('pointerup', () => setPressed(false));
+    element.addEventListener('pointercancel', () => setPressed(false));
+    element.addEventListener('lostpointercapture', () => setPressed(false));
+    element.addEventListener('blur', () => setPressed(false));
+
+    element.addEventListener('click', (event) => {
+        onActivate(event);
+    });
+    element.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setPressed(true);
+        }
+    });
+    element.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setPressed(false);
+            onActivate(event);
+        }
+    });
 }
 
 // ==================== 旋钮拖拽工具 ====================
@@ -341,6 +389,14 @@ class BaseComponent {
         this.labelDiv = null;
         this._eventHandlers = {};
 
+        // 可复用盖板：只有支持盖板的组件会调用 _setupGuard()
+        this.guardSupported = false;
+        this.guardEnabled = Boolean(options.guard);
+        this.guardLabel = options.guardLabel || 'GUARD';
+        this.guardEl = null;
+        this.guardLatchEl = null;
+        this._guardOpen = false;
+
         this._buildWrapper();
         registerComponent(this.cmpName, this);
     }
@@ -403,17 +459,149 @@ class BaseComponent {
         return this;
     }
 
+    // ==================== 盖板 ====================
+    _setupGuard() {
+        this.guardSupported = true;
+        if (this.guardEl) this.guardEl.remove();
+        if (this.guardLatchEl) this.guardLatchEl.remove();
+        this.guardEl = null;
+        this.guardLatchEl = null;
+        this._guardOpen = false;
+        this.wrapperDiv.classList.remove('has-guard', 'is-guard-open', 'is-guard-closed');
+
+        if (!this.guardEnabled) {
+            this._setGuardControlsInert(false);
+            return;
+        }
+
+        this.wrapperDiv.classList.add('has-guard', 'is-guard-closed');
+
+        const cover = document.createElement('div');
+        cover.className = 'component-guard';
+        cover.tabIndex = 0;
+        cover.setAttribute('role', 'button');
+        cover.setAttribute('aria-expanded', 'false');
+        cover.setAttribute('aria-label', '打开盖板');
+
+        const hinge = document.createElement('span');
+        hinge.className = 'component-guard-hinge';
+        const stripes = document.createElement('span');
+        stripes.className = 'component-guard-stripes';
+        const label = document.createElement('span');
+        label.className = 'component-guard-label';
+        label.textContent = this.guardLabel;
+        cover.appendChild(hinge);
+        cover.appendChild(stripes);
+        cover.appendChild(label);
+
+        const openGuard = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.setGuardOpen(true);
+            if (event.type === 'keydown' && latch) {
+                latch.focus();
+            }
+        };
+        cover.addEventListener('click', openGuard);
+        cover.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                openGuard(event);
+            }
+        });
+
+        const latch = document.createElement('button');
+        latch.type = 'button';
+        latch.className = 'component-guard-latch';
+        latch.textContent = '×';
+        latch.title = '关闭盖板';
+        latch.setAttribute('aria-label', '关闭盖板');
+        latch.tabIndex = -1;
+        latch.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.setGuardOpen(false);
+            if (event.detail === 0) {
+                this.guardEl?.focus();
+            }
+        });
+
+        this.guardEl = cover;
+        this.guardLatchEl = latch;
+        this.wrapperDiv.appendChild(cover);
+        this.wrapperDiv.appendChild(latch);
+        this._setGuardControlsInert(true);
+    }
+
+    _setGuardControlsInert(inert) {
+        if (!this.wrapperDiv) return;
+        Array.from(this.wrapperDiv.children).forEach((child) => {
+            if (child === this.guardEl ||
+                child === this.guardLatchEl ||
+                child.classList.contains('component-label') ||
+                child.classList.contains('editor-component-hit')) {
+                return;
+            }
+            if ('inert' in child) {
+                child.inert = inert;
+            }
+            child.style.pointerEvents = inert ? 'none' : '';
+        });
+    }
+
+    setGuardOpen(open) {
+        if (!this.guardEnabled) return this;
+        const next = Boolean(open);
+        if (next === this._guardOpen) return this;
+        this._guardOpen = next;
+        this.wrapperDiv.classList.toggle('is-guard-open', next);
+        this.wrapperDiv.classList.toggle('is-guard-closed', !next);
+        this._setGuardControlsInert(!next);
+
+        if (this.guardEl) {
+            this.guardEl.setAttribute('aria-expanded', next ? 'true' : 'false');
+            this.guardEl.setAttribute('aria-label', next ? '盖板已打开' : '打开盖板');
+            this.guardEl.tabIndex = next ? -1 : 0;
+        }
+        if (this.guardLatchEl) {
+            this.guardLatchEl.tabIndex = next ? 0 : -1;
+        }
+
+        this._emit('guardchange', { cmpName: this.cmpName, open: next });
+        this._emit(next ? 'guardopen' : 'guardclose', { cmpName: this.cmpName });
+        return this;
+    }
+
+    toggleGuard() {
+        return this.setGuardOpen(!this._guardOpen);
+    }
+
+    openGuard() {
+        return this.setGuardOpen(true);
+    }
+
+    closeGuard() {
+        return this.setGuardOpen(false);
+    }
+
+    isGuardOpen() {
+        return this._guardOpen;
+    }
+
     getType() {
         return this.constructor.name;
     }
 
     // 返回可写入项目 JSON 的构造参数；子类在此基础上追加自己的属性
     getOptions() {
-        return {
+        const options = {
             label: this.labelText,
             labelPosition: this.labelPosition,
             labelOrientation: this.labelOrientation,
         };
+        if (this.guardSupported) {
+            options.guard = this.guardEnabled;
+        }
+        return options;
     }
 
     toJSON() {
@@ -609,6 +797,7 @@ export class ButtonSimple extends BaseComponent {
         if (oldBtn) oldBtn.remove();
 
         this.wrapperDiv.appendChild(this.buttonEl);
+        this._setupGuard();
     }
 
     setText(text) {
@@ -715,6 +904,7 @@ export class ButtonWithLights extends BaseComponent {
         });
 
         this.wrapperDiv.appendChild(this.btnContainer);
+        this._setupGuard();
     }
 
     _applyUpperBrightness() {
@@ -741,7 +931,8 @@ export class ButtonWithLights extends BaseComponent {
         if (b <= 0) {
             this.lowerLightEl.classList.remove('lit');
             this.lowerLightEl.style.opacity = '0';
-            this.lowerLightEl.style.boxShadow = 'none';
+            this.lowerLightEl.style.boxShadow =
+                'inset 0 2px 3px rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.05)';
         } else {
             this.lowerLightEl.classList.add('lit');
             const opacity = clamp(b / 100, 0.06, 1);
@@ -749,7 +940,9 @@ export class ButtonWithLights extends BaseComponent {
             const glowIntensity = b / 100;
             const glowSize = 3 + glowIntensity * 8;
             this.lowerLightEl.style.boxShadow =
-                `0 0 ${glowSize}px ${getColorVar(this.lowerLightColor)}, inset 0 0 ${glowSize * 0.6}px ${getColorVar(this.lowerLightColor)}`;
+                `0 0 ${glowSize}px ${getColorVar(this.lowerLightColor)}, ` +
+                `inset 0 0 ${glowSize * 0.6}px ${getColorVar(this.lowerLightColor)}, ` +
+                'inset 0 2px 2px rgba(255, 255, 255, 0.28), inset 0 -3px 4px rgba(0, 0, 0, 0.3)';
             this.lowerLightEl.style.borderColor = getColorVar(this.lowerLightColor);
         }
     }
@@ -872,7 +1065,13 @@ export class IndicatorLight extends BaseComponent {
         this.indicatorEl.appendChild(this.indicatorTextEl);
         this.wrapperDiv.appendChild(this.indicatorEl);
 
+        this.indicatorEl.setAttribute('aria-label', this.lightText || this.cmpName);
+        bindPressableElement(this.indicatorEl, (event) => {
+            this._emit('click', { cmpName: this.cmpName, event });
+        });
+
         this._applyBrightness();
+        this._setupGuard();
     }
 
     _applyBrightness() {
@@ -910,6 +1109,9 @@ export class IndicatorLight extends BaseComponent {
     setText(text) {
         this.lightText = text;
         if (this.indicatorTextEl) this.indicatorTextEl.textContent = text;
+        if (this.indicatorEl) {
+            this.indicatorEl.setAttribute('aria-label', text || this.cmpName);
+        }
         return this;
     }
 
@@ -1009,9 +1211,9 @@ export class IndicatorLightGroup extends BaseComponent {
             gridTemplateRows: `repeat(${this.rows}, minmax(0, 1fr))`,
             gap: `${this.gap}px`,
             padding: '0',
-            background: 'linear-gradient(180deg, #1b1f27, #11151b)',
-            border: '1px solid var(--border-color, #5a5d67)',
-            borderRadius: '5px',
+            background: 'linear-gradient(180deg, #2d333d, #11151b 58%, #0b0e13)',
+            border: '1px solid #59616e',
+            borderRadius: '6px',
             overflow: 'hidden',
         });
 
@@ -1072,6 +1274,18 @@ export class IndicatorLightGroup extends BaseComponent {
                 whiteSpace: 'nowrap',
             });
             lamp.appendChild(textEl);
+            lamp.setAttribute('aria-label', this._texts[index] || `${this.cmpName} ${index + 1}`);
+            bindPressableElement(lamp, (event) => {
+                const data = {
+                    cmpName: this.cmpName,
+                    index,
+                    brightness: this._brightness[index],
+                    text: this._texts[index],
+                    event,
+                };
+                this._emit('lightclick', data);
+                this._emit('click', data);
+            });
 
             cell.appendChild(lamp);
             this.groupEl.appendChild(cell);
@@ -1169,8 +1383,15 @@ export class IndicatorLightGroup extends BaseComponent {
             return this;
         }
         this._texts[targetIndex] = String(text ?? '');
-        const textEl = this.lampEls[targetIndex]?.querySelector('.indicator-light-group-lamp-text');
+        const lampEl = this.lampEls[targetIndex];
+        const textEl = lampEl?.querySelector('.indicator-light-group-lamp-text');
         if (textEl) textEl.textContent = this._texts[targetIndex];
+        if (lampEl) {
+            lampEl.setAttribute(
+                'aria-label',
+                this._texts[targetIndex] || `${this.cmpName} ${targetIndex + 1}`
+            );
+        }
         return this;
     }
 
@@ -1325,6 +1546,7 @@ export class KnobDiscrete extends BaseComponent {
 
         // 事件绑定
         this._bindKnobEvents();
+        this._setupGuard();
     }
 
     _getAngleForPosition(posIndex) {
@@ -1574,6 +1796,7 @@ export class KnobContinuous extends BaseComponent {
         this.wrapperDiv.appendChild(this.knobContainer);
 
         this._bindKnobEvents();
+        this._setupGuard();
     }
 
     _getAngleForValue(val) {
@@ -2297,6 +2520,7 @@ export class KnobInfinite extends BaseComponent {
         this.wrapperDiv.appendChild(this.knobContainer);
 
         this._bindKnobEvents();
+        this._setupGuard();
     }
 
     _updateKnobRotation() {
