@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主飞行显示屏 - Primary Flight Display</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px;
+            background: #14171c;
+            color: #E6E9EF;
+            font-family: "Courier New", Courier, monospace;
+        }
+        h2 { margin: 0 0 16px; font-size: 18px; letter-spacing: 1px; }
+        .container { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+        .instrument-panel { display: flex; gap: 20px; flex-wrap: wrap; }
+        .instrument-wrapper { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .instrument-wrapper canvas {
+            background: #0A0C10;
+            border: 1px solid #2A2F37;
+            border-radius: 6px;
+            display: block;
+        }
+        .instrument-label { font-size: 12px; color: #9AA0A6; }
+        .controls {
+            width: 320px;
+            background: #1B1F26;
+            border: 1px solid #2A2F37;
+            border-radius: 8px;
+            padding: 16px 18px;
+        }
+        .controls h3 { margin: 0 0 14px; font-size: 15px; }
+        .control-group { margin-bottom: 14px; }
+        .control-group label {
+            display: flex; justify-content: space-between;
+            font-size: 12px; color: #B9C0CB; margin-bottom: 6px;
+        }
+        .value-display { color: #FFD54F; }
+        input[type="range"] { width: 100%; }
+        .toggle-row { display: flex; align-items: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+        .btn, .toggle-btn {
+            font-family: inherit; font-size: 12px; cursor: pointer;
+            background: #262C35; color: #E6E9EF;
+            border: 1px solid #39404B; border-radius: 4px;
+            padding: 6px 10px;
+        }
+        .btn:hover, .toggle-btn:hover { background: #303743; }
+        .toggle-btn.active { background: #2E6B4F; border-color: #3E8C68; color: #FFFFFF; }
+        .toggle-btn.danger.active { background: #8A3B2E; border-color: #B44E3D; }
+        .hint-text { font-size: 11px; color: #7E858F; line-height: 1.6; }
+        .fma-block { margin: 14px 0 6px; border-top: 1px solid #2A2F37; padding-top: 12px; }
+        .fma-block h4 { margin: 0 0 8px; font-size: 13px; }
+        .fma-row { display: flex; gap: 4px; margin-bottom: 5px; }
+        .fma-row input {
+            flex: 1 1 0; min-width: 0; width: 0;
+            font-family: inherit; font-size: 11px;
+            background: #12151A; color: #E6E9EF;
+            border: 1px solid #39404B; border-radius: 3px;
+            padding: 4px 3px; text-align: center;
+        }
+        .fma-row input:focus { outline: none; border-color: #00E5FF; }
+        .fma-tag { font-size: 11px; color: #7E858F; margin: 2px 0 8px; }
+        .color-presets { display: flex; gap: 8px; }
+        .color-preset {
+            width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+            border: 2px solid transparent; display: inline-block;
+        }
+        .color-preset.active { border-color: #FFFFFF; }
+        .btn-row { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+    <h2>✈️ 主飞行显示屏 PFD（207 × 253）</h2>
+    <div class="container">
+        <div class="instrument-panel">
+            <div class="instrument-wrapper">
+                <canvas id="pfdNormal" width="207" height="253"></canvas>
+                <span class="instrument-label">主显示</span>
+            </div>
+            <div class="instrument-wrapper">
+                <canvas id="pfdFailed" width="207" height="253"></canvas>
+                <span class="instrument-label">姿态仪不可用（ATT）</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>✈️ 姿态与飞行指引</h3>
+
+            <div class="control-group">
+                <label>实际俯仰角 <span class="value-display" id="pitchValue">4.0°</span></label>
+                <input type="range" id="pitchSlider" min="-30" max="30" value="4" step="0.5">
+            </div>
+
+            <div class="control-group">
+                <label>实际横滚角 <span class="value-display" id="rollValue">0°</span></label>
+                <input type="range" id="rollSlider" min="-60" max="60" value="0" step="1">
+            </div>
+
+            <div class="control-group">
+                <label>目标俯仰角 <span class="value-display" id="fdPitchValue">12.0°</span></label>
+                <input type="range" id="fdPitchSlider" min="-30" max="30" value="12" step="0.5">
+            </div>
+
+            <div class="control-group">
+                <label>目标横滚角 <span class="value-display" id="fdRollValue">10°</span></label>
+                <input type="range" id="fdRollSlider" min="-60" max="60" value="10" step="1">
+            </div>
+
+            <div class="toggle-row">
+                <button class="toggle-btn active" id="toggleFd">显示飞行指引</button>
+                <button class="toggle-btn danger" id="toggleFail">姿态仪故障</button>
+            </div>
+            <div class="hint-text">
+                顶部 50 px 为 FMA 信息区：2 行 × 4 栏，每行 18 px，第一行绿色、第二行青色、最后一栏白色；
+                其下依次为转向刻度与姿态仪；
+                俯仰刻度非线性：0~10° 占用原先 0~20° 的刻度空间；顶部转向刻度为 5° 小刻度 / 10° 大刻度，
+                姿态仪内侧三角形沿刻度指示倾斜角；大俯仰角时姿态球仍持续滚动（不卡住），
+                地平线移出画面后由对应边缘的蓝色 / 棕色色带指示天空 / 地面方向；
+                故障时姿态仪整体不绘制，仅保留机翼标识、转向刻度与 ATT 故障旗。
+            </div>
+
+            <div class="control-group">
+                <label>指引线颜色</label>
+                <div class="color-presets" id="fdColorPresets">
+                    <span class="color-preset active" data-color="#FFD54F" style="background:#FFD54F;" title="琥珀"></span>
+                    <span class="color-preset" data-color="#7CFC8A" style="background:#7CFC8A;" title="绿色"></span>
+                    <span class="color-preset" data-color="#00E5FF" style="background:#00E5FF;" title="青色"></span>
+                    <span class="color-preset" data-color="#FF4FD8" style="background:#FF4FD8;" title="品红"></span>
+                    <span class="color-preset" data-color="#FFFFFF" style="background:#FFFFFF;" title="白色"></span>
+                </div>
+            </div>
+
+            <div class="fma-block">
+                <h4>📋 FMA 飞行模式通告</h4>
+                <div class="fma-tag">第一行（绿色）</div>
+                <div class="fma-row">
+                    <input class="fma-input" data-r="0" data-c="0" maxlength="12" value="VNAV PTH">
+                    <input class="fma-input" data-r="0" data-c="1" maxlength="12" value="LNAV">
+                    <input class="fma-input" data-r="0" data-c="2" maxlength="12" value="A/T">
+                    <input class="fma-input" data-r="0" data-c="3" maxlength="12" value="AP">
+                </div>
+                <div class="fma-tag">第二行（青色）· 最后一栏两行均为白色</div>
+                <div class="fma-row">
+                    <input class="fma-input" data-r="1" data-c="0" maxlength="12" value="ALT HOLD">
+                    <input class="fma-input" data-r="1" data-c="1" maxlength="12" value="HDG SEL">
+                    <input class="fma-input" data-r="1" data-c="2" maxlength="12" value="SPD">
+                    <input class="fma-input" data-r="1" data-c="3" maxlength="12" value="CMD">
+                </div>
+                <div class="btn-row" style="margin-top: 8px;">
+                    <button class="btn" id="btnFmaCruise">巡航</button>
+                    <button class="btn" id="btnFmaApproach">进近</button>
+                    <button class="btn" id="btnFmaGoAround">复飞</button>
+                    <button class="btn" id="btnFmaClear">清除</button>
+                </div>
+                <div class="fma-tag" style="margin-top: 8px;">
+                    修改第一行任意栏或最后一栏任意行（含清空）→ 该处加框，3 s 后自动消失。
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button class="btn" id="btnCenterFd">目标 = 实际</button>
+                <button class="btn" id="btnReset">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../scripts/CRTDisplay.js"></script>
+    <script type="module">
+        import { PrimaryFlightDisplay } from "../scripts/pfd.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const normalCanvas = document.getElementById('pfdNormal');
+            const failedCanvas = document.getElementById('pfdFailed');
+            const config = {
+                curvature: 0.03,
+                scanline: 0.1,
+                mask: 0.02,
+                aberration: 0,
+                bloom: 0.02,
+                persistence: 0.02,
+                noise: 0,
+                brightness: 1
+            };
+            const crt1 = new CRTDisplay(normalCanvas, config);
+            const crt2 = new CRTDisplay(failedCanvas, config);
+            const pfd = new PrimaryFlightDisplay(normalCanvas);
+            const pfdFailed = new PrimaryFlightDisplay(failedCanvas);
+
+            const pitchSlider = document.getElementById('pitchSlider');
+            const rollSlider = document.getElementById('rollSlider');
+            const fdPitchSlider = document.getElementById('fdPitchSlider');
+            const fdRollSlider = document.getElementById('fdRollSlider');
+            const pitchValue = document.getElementById('pitchValue');
+            const rollValue = document.getElementById('rollValue');
+            const fdPitchValue = document.getElementById('fdPitchValue');
+            const fdRollValue = document.getElementById('fdRollValue');
+            const toggleFd = document.getElementById('toggleFd');
+            const toggleFail = document.getElementById('toggleFail');
+            const colorPresets = document.getElementById('fdColorPresets');
+            const btnCenterFd = document.getElementById('btnCenterFd');
+            const btnReset = document.getElementById('btnReset');
+
+            const fmaInputs = Array.from(document.querySelectorAll('.fma-input'));
+
+            function readFma() {
+                const rows = [[], []];
+                fmaInputs.forEach((input) => {
+                    rows[Number(input.dataset.r)][Number(input.dataset.c)] = input.value;
+                });
+                return rows;
+            }
+
+            function writeFma(rows) {
+                fmaInputs.forEach((input) => {
+                    input.value = rows[Number(input.dataset.r)][Number(input.dataset.c)];
+                });
+            }
+
+            const FMA_PRESETS = {
+                cruise: [['VNAV PTH', 'LNAV', 'A/T', 'AP'], ['ALT HOLD', 'HDG SEL', 'SPD', 'CMD']],
+                approach: [['VNAV PTH', 'LOC', 'A/T', 'AP'], ['G/S', 'APP', 'SPD', 'CMD']],
+                goAround: [['TO/GA', 'TO/GA', 'A/T', 'AP'], ['GA', 'TO/GA', 'THR', 'FD']],
+                clear: [['', '', '', ''], ['', '', '', '']],
+            };
+
+            let showFlightDirector = true;
+            let flightDirectorColor = '#FFD54F';
+            let mainFailure = false;    // 左侧主显示是否故障（由开关控制）
+            const compareFailure = true; // 右侧恒为故障态，用于对比
+
+            function refreshDisplay() {
+                const pitch = parseFloat(pitchSlider.value);
+                const roll = parseFloat(rollSlider.value);
+                const fdPitch = parseFloat(fdPitchSlider.value);
+                const fdRoll = parseFloat(fdRollSlider.value);
+
+                pitchValue.textContent = `${pitch.toFixed(1)}°`;
+                rollValue.textContent = `${roll.toFixed(0)}°`;
+                fdPitchValue.textContent = `${fdPitch.toFixed(1)}°`;
+                fdRollValue.textContent = `${fdRoll.toFixed(0)}°`;
+
+                const flightDirector = showFlightDirector
+                    ? { targetPitch: fdPitch, targetRoll: fdRoll, color: flightDirectorColor }
+                    : null;
+                const fma = readFma();
+
+                // 左侧：主显示
+                pfd.updateDisplay(pitch, roll, {
+                    flightDirector,
+                    attitudeFailure: mainFailure,
+                    fma,
+                });
+
+                // 右侧：恒为「姿态仪不可用」，用于对比
+                pfdFailed.updateDisplay(pitch, roll, {
+                    flightDirector,
+                    attitudeFailure: compareFailure,
+                    fma,
+                });
+            }
+
+            [pitchSlider, rollSlider, fdPitchSlider, fdRollSlider].forEach((slider) => {
+                slider.addEventListener('input', refreshDisplay);
+            });
+
+            toggleFd.addEventListener('click', () => {
+                showFlightDirector = !showFlightDirector;
+                toggleFd.classList.toggle('active', showFlightDirector);
+                toggleFd.textContent = showFlightDirector ? '显示飞行指引' : '隐藏飞行指引';
+                refreshDisplay();
+            });
+
+            toggleFail.addEventListener('click', () => {
+                mainFailure = !mainFailure;
+                toggleFail.classList.toggle('active', mainFailure);
+                refreshDisplay();
+            });
+
+            colorPresets.addEventListener('click', (event) => {
+                const preset = event.target.closest('.color-preset');
+                if (!preset) return;
+                colorPresets.querySelectorAll('.color-preset').forEach((item) => {
+                    item.classList.remove('active');
+                });
+                preset.classList.add('active');
+                flightDirectorColor = preset.dataset.color;
+                refreshDisplay();
+            });
+
+            fmaInputs.forEach((input) => {
+                input.addEventListener('input', refreshDisplay);
+            });
+
+            [['btnFmaCruise', 'cruise'], ['btnFmaApproach', 'approach'],
+             ['btnFmaGoAround', 'goAround'], ['btnFmaClear', 'clear']].forEach(([id, key]) => {
+                document.getElementById(id).addEventListener('click', () => {
+                    writeFma(FMA_PRESETS[key]);
+                    refreshDisplay();
+                });
+            });
+
+            btnCenterFd.addEventListener('click', () => {
+                fdPitchSlider.value = pitchSlider.value;
+                fdRollSlider.value = rollSlider.value;
+                refreshDisplay();
+            });
+
+            btnReset.addEventListener('click', () => {
+                pitchSlider.value = 4;
+                rollSlider.value = 0;
+                fdPitchSlider.value = 12;
+                fdRollSlider.value = 10;
+                showFlightDirector = true;
+                flightDirectorColor = '#FFD54F';
+                mainFailure = false;
+                toggleFd.classList.add('active');
+                toggleFd.textContent = '显示飞行指引';
+                toggleFail.classList.remove('active');
+                colorPresets.querySelectorAll('.color-preset').forEach((item) => {
+                    item.classList.remove('active');
+                });
+                const amberPreset = colorPresets.querySelector('[data-color="#FFD54F"]');
+                if (amberPreset) amberPreset.classList.add('active');
+                writeFma(FMA_PRESETS.cruise);
+                refreshDisplay();
+            });
+
+            refreshDisplay();
+
+            console.log('✈️ PFD 已就绪 | Primary Flight Display Ready');
+            console.log('   顶部 50 px：FMA 2 行 × 4 栏（第一行绿色 / 第二行青色 / 最后一栏白色）');
+            console.log('   第一行任意栏或最后一栏任意行变更（含清空）→ 该处加框，3 s 后自动消失');
+            console.log('   画布 207 × 253，姿态仪为「操场形」（矩形 + 上下半圆）');
+            console.log('   机翼标识固定不动，俯仰刻度 0~10° 放大为原先 0~20° 的刻度空间');
+            console.log('   顶部转向刻度 5° 小刻度 / 10° 大刻度，内侧三角形指示倾斜角');
+            console.log('   姿态仪故障时：不绘制姿态仪，保留机翼标识与转向刻度，并显示黄色加框 ATT');
+        });
+    </script>
+</body>
+</html>

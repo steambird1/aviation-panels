@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>导航显示 ND 演示（253 × 253）</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px;
+    background: #101216; color: #d8dee6;
+    font: 13px/1.6 "Segoe UI", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; color: #fff; font-weight: 600; }
+  .sub { color: #8b95a3; font-size: 12px; margin-bottom: 16px; }
+  .wrap { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+
+  .stage {
+    background: #000; padding: 10px; border: 1px solid #2a3140; border-radius: 4px;
+  }
+  canvas#nd {
+    display: block; width: 253px; height: 253px;
+    background: #000; image-rendering: pixelated;
+  }
+  .stage .cap { color: #6d7686; font-size: 11px; margin-top: 8px; text-align: center; }
+
+  .panel { min-width: 330px; }
+  fieldset {
+    border: 1px solid #2a3140; border-radius: 4px; margin: 0 0 12px; padding: 8px 12px 12px;
+  }
+  legend { color: #9fb0c6; font-size: 12px; padding: 0 6px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { flex: 0 0 84px; color: #9aa5b5; font-size: 12px; }
+  .row input[type=range] { flex: 1; min-width: 0; }
+  .row .val {
+    flex: 0 0 62px; text-align: right; color: #ffd76a;
+    font-family: "Courier New", monospace; font-size: 12px;
+  }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .checks label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #c3cbd7; }
+  select, button {
+    background: #1b2029; color: #d8dee6; border: 1px solid #39414f;
+    border-radius: 3px; padding: 3px 8px; font-size: 12px;
+  }
+  button { cursor: pointer; }
+  button:hover { background: #232935; }
+  .note { color: #7b8695; font-size: 11.5px; margin: 4px 0 0; }
+  .readout {
+    font-family: "Courier New", monospace; font-size: 12px; color: #7fe0a0;
+  }
+  .readout span { color: #9aa5b5; font-family: inherit; }
+  .legend { font-size: 11.5px; color: #8b95a3; }
+  .legend b { color: #c3cbd7; font-weight: 600; }
+  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 3px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<h1>飞机导航显示（Navigation Display）</h1>
+<div class="sub">253 × 253 canvas · Courier New · 航迹向上（track up）显示</div>
+
+<div class="wrap">
+  <div class="stage">
+    <canvas id="nd" width="253" height="253"></canvas>
+    <div class="cap">ND 显示区（canvas 实际尺寸 253 × 253，其它导航信息区域在下方预留）</div>
+  </div>
+
+  <div class="panel">
+    <fieldset>
+      <legend>姿态 / 航向</legend>
+      <div class="row">
+        <label>航向 HDG</label>
+        <input id="rngHdg" type="range" min="0" max="359" step="1" value="40">
+        <span class="val" id="rngHdgVal">040</span>
+      </div>
+      <div class="row">
+        <label>偏流 TRK-HDG</label>
+        <input id="rngDrift" type="range" min="-20" max="20" step="1" value="0">
+        <span class="val" id="rngDriftVal">+0°</span>
+      </div>
+      <div class="checks">
+        <label><input id="chkHdgFault" type="checkbox"> 航向指示故障（黄色带框 HDG）</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>风</legend>
+      <div class="row">
+        <label>风向（来向）</label>
+        <input id="rngWindDir" type="range" min="0" max="359" step="1" value="300">
+        <span class="val" id="rngWindDirVal">300°</span>
+      </div>
+      <div class="row">
+        <label>风速</label>
+        <input id="rngWindSpd" type="range" min="0" max="99" step="1" value="18">
+        <span class="val" id="rngWindSpdVal">18</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>地图</legend>
+      <div class="row">
+        <label>比例尺</label>
+        <select id="selRange">
+          <option value="5">5 NM</option>
+          <option value="10">10 NM</option>
+          <option value="20" selected>20 NM</option>
+          <option value="40">40 NM</option>
+          <option value="80">80 NM</option>
+        </select>
+        <span class="val" id="selRangeVal">20 NM</span>
+      </div>
+      <div class="row">
+        <label>航向弧跨度</label>
+        <select id="selSpan">
+          <option value="60">±60°（罗盘跨度最大）</option>
+          <option value="50">±50°</option>
+          <option value="45" selected>±45°（默认）</option>
+          <option value="40">±40°（地图最大）</option>
+        </select>
+        <span class="val" id="selSpanVal">r176</span>
+      </div>
+      <p class="note">跨度越小，弧越平缓、弧顶两侧的空角越小、地图半径越大（右侧为当前地图半径 r）。<br>
+        弧顶两侧的空角是“以飞机为圆心的弧形显示”的固有几何，左右完全对称——左侧看起来不明显是因为被风向箭头填充了。</p>
+      <div class="row">
+        <label>转弯半径</label>
+        <input id="rngTurn" type="range" min="0" max="4" step="0.5" value="2">
+        <span class="val" id="rngTurnVal">2.0 NM</span>
+      </div>
+      <div class="checks">
+        <label><input id="chkRadials" type="checkbox" checked> 导航台径向线</label>
+        <label><input id="chkNames" type="checkbox" checked> 点名称</label>
+        <label><input id="chkMapFault" type="checkbox"> 地图数据故障（黄色带框 MAP）</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>雷达</legend>
+      <div class="row">
+        <label>模式</label>
+        <select id="selRadar">
+          <option value="off">关</option>
+          <option value="wxr" selected>气象雷达 WXR</option>
+          <option value="terr">地形雷达 TERR</option>
+        </select>
+        <span class="val" id="outLvl">-</span>
+      </div>
+      <p class="note">
+        无 / 深绿 / 浅绿 / 黄 / 红 / 深红，逐像素以 <code>Uint8Array(253×253)</code> 传入。
+      </p>
+    </fieldset>
+
+    <fieldset>
+      <legend>显示开关</legend>
+      <div class="checks">
+        <label><input id="chkExtra" type="checkbox"> 其它导航信息区域（下方预留 110px）</label>
+        <label><input id="chkAnimate" type="checkbox"> 沿航路飞行演示</label>
+        <label><input id="chkZoom" type="checkbox"> 2× 放大显示（不改变 canvas 尺寸）</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnReset">回到起始位置</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>状态</legend>
+      <div class="readout">
+        <span>TRK </span><b id="outHdg">040</b>&nbsp;&nbsp;
+        <span>下一航路点 </span><b id="outWpt">BRAVO</b><br>
+        <span>飞机位置(NM) </span><b id="outPos">0.0, 0.0</b>
+      </div>
+      <p class="legend" style="margin-top:8px">
+        <b>图例：</b>
+        <span class="sw" style="background:#ff44ff"></span>当前航路/下一航路点（紫）
+        &nbsp;<span class="sw" style="background:#fff;border-radius:50%"></span>后续航路（白）
+        &nbsp;<span class="sw" style="background:#22e0e0"></span>导航台/径向线（青）
+      </p>
+    </fieldset>
+  </div>
+</div>
+
+<script src="../scripts/navdisplay.js?v=20261027b"></script>
+<script src="../scripts/demo.js?v=20261027b"></script>
+</body>
+</html>
