@@ -163,6 +163,11 @@ body {
     text-transform: uppercase;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
     pointer-events: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: center;
+    line-height: 1.1;
+    max-width: 100%;
 }
 
 .component-guard:focus-visible,
@@ -256,6 +261,9 @@ body {
     text-orientation: mixed;
     letter-spacing: 0.08em;
     line-height: 1;
+    white-space: pre;
+    width: auto;
+    max-width: none;
 }
 .component-label.label-left.label-vertical,
 .component-label.label-right.label-vertical {
@@ -432,6 +440,8 @@ body {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     min-height: 10px;
+    max-width: 100%;
+    min-width: 0;
     transition: all 0.15s ease;
     opacity: 0;
     text-shadow: none;
@@ -457,6 +467,7 @@ body {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     min-width: 20px;
+    max-width: 100%;
     min-height: 10px;
     transition: all 0.15s ease;
     opacity: 0;
@@ -711,7 +722,12 @@ body {
     font-weight: 500;
     color: #9ca0aa;
     pointer-events: none;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    max-width: 80px;
+    width: max-content;
+    line-height: 1.15;
     text-align: center;
     letter-spacing: 0.03em;
     transform: translate(-50%, -50%);
@@ -821,7 +837,12 @@ body {
     font-weight: 500;
     color: #9ca0aa;
     pointer-events: none;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    max-width: 120px;
+    width: max-content;
+    line-height: 1.15;
     letter-spacing: 0.03em;
     transition: color 0.2s;
 }

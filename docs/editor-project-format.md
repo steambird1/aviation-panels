@@ -225,6 +225,14 @@ button.on('guardchange', ({ cmpName, open }) => {
 "texts": ["APU\nON", "BLEED", "FUEL"]
 ```
 
+旋钮档位和拨杆档位对应的刻度文本同样支持换行；在 JSON 的 `positions` 数组元素中加入 `\n` 即可：
+
+```json
+"positions": ["OFF", "AUTO\nTHRUST", "ON"]
+```
+
+> 编辑器中的 `positions` 和灯组 `texts` 仍按逗号分隔输入；需要逐项换行时，可在导出的 JSON 中直接编辑。
+
 ---
 
 ## 5. 颜色格式
