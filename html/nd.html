@@ -56,12 +56,13 @@
 <body>
 
 <h1>飞机导航显示（Navigation Display）</h1>
-<div class="sub">253 × 253 canvas · Courier New · 航迹向上（track up）显示</div>
+<div class="sub">253 × 253 canvas · Courier New · 航迹向上（track up）显示　·
+  若改动未生效，请按 Ctrl/Cmd+Shift+R 强制刷新</div>
 
 <div class="wrap">
   <div class="stage">
     <canvas id="nd" width="253" height="253"></canvas>
-    <div class="cap">ND 显示区（canvas 实际尺寸 253 × 253，其它导航信息区域在下方预留）</div>
+    <div class="cap">ND 显示区（canvas 实际尺寸 253 × 253，其它导航信息区域在下方预留，用于垂直导航剖面）</div>
   </div>
 
   <div class="panel">
@@ -145,14 +146,89 @@
         <span class="val" id="outLvl">-</span>
       </div>
       <p class="note">
-        无 / 深绿 / 浅绿 / 黄 / 红 / 深红，逐像素以 <code>Uint8Array(253×253)</code> 传入。
+        无 / 深绿 / 浅绿 / 黄 / 红 / 深红，逐像素以 <code>Uint8Array(253×253)</code> 传入。<br>
+        该栅格是<b>屏幕空间</b>数据，须按当前比例尺生成：<code>setInput() → updateLayout() → 生成栅格 → draw()</code>。<br>
+        地形雷达另附 <code>terrain.elevation</code>（<code>Float32Array</code>，英尺），
+        垂直导航剖面直接复用这份栅格沿航迹采样。
+      </p>
+    </fieldset>
+
+    <fieldset>
+      <legend>垂直导航（下方预留区）</legend>
+      <div class="row">
+        <label>高度带分度值</label>
+        <select id="selMajorDiv">
+          <option value="100">100 ft</option>
+          <option value="500">500 ft</option>
+          <option value="1000">1000 ft</option>
+          <option value="2000" selected>2000 ft</option>
+          <option value="5000">5000 ft</option>
+        </select>
+        <span class="val">/ 大刻度</span>
+      </div>
+      <div class="row">
+        <label>当前高度</label>
+        <input id="rngAlt" type="range" min="0" max="45000" step="100" value="5000">
+        <span class="val" id="rngAltVal">5000</span>
+      </div>
+      <div class="row">
+        <label>垂直速度</label>
+        <input id="rngVs" type="range" min="-15" max="15" step="0.1" value="-0.8">
+        <span class="val" id="rngVsVal">-0.8 m/s (-157 fpm)</span>
+      </div>
+      <div class="row">
+        <label>垂直加速度</label>
+        <input id="rngAcc" type="range" min="-1" max="1" step="0.01" value="-0.02">
+        <span class="val" id="rngAccVal">-0.02 m/s²</span>
+      </div>
+      <div class="row">
+        <label>地速</label>
+        <input id="rngGs" type="range" min="50" max="300" step="5" value="230">
+        <span class="val" id="rngGsVal">230</span>
+      </div>
+      <div class="row">
+        <label>最低下降高度</label>
+        <input id="rngMda" type="range" min="0" max="8000" step="100" value="1200">
+        <span class="val" id="rngMdaVal">1200</span>
+      </div>
+      <div class="row">
+        <label>目标高度</label>
+        <input id="rngTargetAlt" type="range" min="0" max="40000" step="500" value="3000">
+        <span class="val" id="rngTargetAltVal">3000</span>
+      </div>
+      <div class="row">
+        <label>目标升降率</label>
+        <input id="rngTargetRate" type="range" min="-4000" max="4000" step="100" value="-1000">
+        <span class="val" id="rngTargetRateVal">-1000 fpm</span>
+      </div>
+      <div class="row">
+        <label>目标阶段数</label>
+        <select id="selTargetStages">
+          <option value="1">1 段</option>
+          <option value="2" selected>2 段</option>
+          <option value="3">3 段</option>
+        </select>
+        <span class="val">每阶段递减 2000 ft</span>
+      </div>
+      <div class="checks">
+        <label><input id="chkTarget" type="checkbox" checked> 目标高度/升降率（紫色虚线）</label>
+        <label><input id="chkMda" type="checkbox" checked> 最低下降高度（青色虚线）</label>
+        <label><input id="chkVnavWpt" type="checkbox" checked> 把航路点显示在上面</label>
+      </div>
+      <p class="note">
+        高度条随高度滚动，当前高度始终位于高度条的一半处；白色线为高度趋势
+        （含加速度，故为二次曲线），长度约为剩余宽度的 1/5。<br>
+        地形按接近率着色：<span class="sw" style="background:#30ff30"></span>绿（余度充足）
+        <span class="sw" style="background:#ffd400"></span>黄（余度不足 1000 ft）
+        <span class="sw" style="background:#ff3c30"></span>红（地形接近/高于预测轨迹）。<br>
+        目标高度或最低下降高度为 <code>null</code> 时对应信息不显示（用上面的开关模拟）。
       </p>
     </fieldset>
 
     <fieldset>
       <legend>显示开关</legend>
       <div class="checks">
-        <label><input id="chkExtra" type="checkbox"> 其它导航信息区域（下方预留 110px）</label>
+        <label><input id="chkExtra" type="checkbox"> 其它导航信息区域（下方预留 110px，绘制 VNAV 剖面）</label>
         <label><input id="chkAnimate" type="checkbox"> 沿航路飞行演示</label>
         <label><input id="chkZoom" type="checkbox"> 2× 放大显示（不改变 canvas 尺寸）</label>
       </div>
@@ -178,7 +254,9 @@
   </div>
 </div>
 
-<script src="../scripts/navdisplay.js?v=20261027b"></script>
-<script src="../scripts/demo.js?v=20261027b"></script>
+<script src="../scripts/navdisplay.js?v=20261027d"></script>
+<script src="../scripts/navprofile.js?v=20261027d"></script>
+<script src="../scripts/vnav.js?v=20261027d"></script>
+<script src="../scripts/demo_nd.js?v=20261027d"></script>
 </body>
 </html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>带方向的速度指示仪表 · 132 × 132</title>
+<style>
+  :root {
+    --bg: #070a0e;
+    --card: #111823;
+    --line: #1e2a38;
+    --txt: #d7e3f0;
+    --sub: #7c8ea3;
+    --cyan: #00ffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 24px 56px;
+    background: var(--bg);
+    color: var(--txt);
+    font: 14px/1.6 "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: .5px; }
+  h2 { font-size: 15px; margin: 34px 0 14px; padding-left: 9px; border-left: 3px solid var(--cyan); }
+  p.lead { color: var(--sub); margin: 0 0 4px; font-size: 13px; }
+  code { background: #16202c; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #9fe8ef; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 10px 12px;
+    text-align: center;
+  }
+  /* 黑色“屏幕区域”为方形：canvas 不做圆形裁切 */
+  .card canvas { display: block; margin: 0 auto 9px; border: 1px solid #26344a; }
+  .card .t { font-size: 12.5px; font-weight: 600; }
+  .card .d { font-size: 11px; color: var(--sub); margin-top: 3px; min-height: 32px; }
+
+  .panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-start;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .stage { flex: 0 0 auto; text-align: center; }
+  .stage canvas { border: 1px solid #26344a; }
+  .stage .cap { font-size: 11px; color: var(--sub); margin-top: 8px; }
+  .controls { flex: 1 1 320px; min-width: 300px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+  .row label { flex: 0 0 92px; font-size: 12px; color: var(--sub); }
+  .row input[type=range] { flex: 1; accent-color: var(--cyan); }
+  .row .val { flex: 0 0 62px; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .checks { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; }
+  .checks label { font-size: 12px; color: var(--txt); display: flex; align-items: center; gap: 5px; }
+  .checks input { accent-color: #ffd400; }
+  pre.state {
+    margin: 12px 0 0;
+    background: #0b111a;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    color: #9fe8ef;
+    overflow-x: auto;
+  }
+  .note { font-size: 12px; color: var(--sub); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<h1>带方向的速度指示仪表</h1>
+<p class="lead">画布尺寸 <code>132 × 132</code>（黑色屏幕区域为<b>方形</b>），圆心 (66,66)，外圈圆半径 39。速度 → 半径：0~10 节 → 0~3/4R，10~30 节 → 3/4R~R（30 节恰好贴边）。</p>
+<p class="lead"><code>direction</code> 是<b>盘外标注的角度</b>：屏幕角度 = <code>direction − ringRotation</code>，故速度方向不变而盘面转动时，箭头的屏幕指向随之改变。</p>
+
+<h2>典型状态</h2>
+<div class="grid" id="cases"></div>
+
+<h2>交互调试</h2>
+<div class="panel">
+  <div class="stage">
+    <canvas id="big"></canvas>
+    <div class="cap">132 × 132（3× 放大显示）</div>
+  </div>
+  <div class="controls">
+    <div class="row">
+      <label>速度（节）</label>
+      <input id="sp" type="range" min="0" max="35" step="0.5" value="12">
+      <span class="val" id="spV">12.0</span>
+    </div>
+    <div class="row">
+      <label>速度方向</label>
+      <input id="dr" type="range" min="0" max="359" step="1" value="40">
+      <span class="val" id="drV">40°</span>
+    </div>
+    <div class="row">
+      <label>限速（节）</label>
+      <input id="lm" type="range" min="0" max="30" step="1" value="25">
+      <span class="val" id="lmV">25</span>
+    </div>
+    <div class="row">
+      <label>盘面转动</label>
+      <input id="rt" type="range" min="0" max="359" step="1" value="0">
+      <span class="val" id="rtV">0°</span>
+    </div>
+    <div class="checks">
+      <label><input id="fSpd" type="checkbox"> SPD 故障（速度不存在）</label>
+      <label><input id="fLim" type="checkbox"> LIM 故障（限速故障）</label>
+      <label><input id="fDir" type="checkbox"> DIR 故障（方向故障）</label>
+      <label><input id="noLim" type="checkbox"> 无限速指示</label>
+    </div>
+    <pre class="state" id="stateOut"></pre>
+    <div class="row">
+      <label>DIR 推定</label>
+      <select id="dfm" style="flex:1;background:#0b111a;color:#9fe8ef;border:1px solid #26344a;border-radius:4px;padding:3px 6px;font-size:12px;">
+        <option value="ring">ring：推定 = 外圈角度指示 → 箭头恒朝上（默认）</option>
+        <option value="double">double：推定 = 2 × 外圈角度指示 → 屏幕偏转</option>
+      </select>
+      <span class="val"></span>
+    </div>
+    <div class="note"><code>direction</code> 对应盘外标注的角度，屏幕角度 = <code>direction − 盘面转动</code>：拖动「盘面转动」时，速度方向数值不变，箭头会跟着盘面转。<br>勾选 DIR 故障后，推定方向取<b>外圈角度指示</b>（顶部三角形所指的盘外角度），它落在屏幕正上方，故箭头直接指向上方。</div>
+  </div>
+</div>
+
+<h2>动态演示</h2>
+<div class="panel" style="justify-content:flex-start;gap:22px;">
+  <div class="stage"><canvas id="anim1"></canvas><div class="cap">速度 / 方向连续变化</div></div>
+  <div class="stage"><canvas id="anim2"></canvas><div class="cap">方向固定 200°，盘面持续转动<br>→ 箭头屏幕指向随之改变</div></div>
+  <div class="stage"><canvas id="anim3"></canvas><div class="cap">DIR 故障（ring 模式）<br>→ 箭头恒指向正上方 + DIR</div></div>
+</div>
+
+<script src="../scripts/directional-speed-gauge.js"></script>
+<script>
+(function () {
+  var G = window.DirectionalSpeedGauge;
+
+  /* ---------------- 典型状态 ---------------- */
+  var cases = [
+    { t: '正常', d: '12 节 / 40° / 限速 25', s: { speed: 12, direction: 40, limit: 25 } },
+    { t: '低速', d: '4 节 / 300° / 限速 25', s: { speed: 4, direction: 300, limit: 25 } },
+    { t: '接近限速', d: '25 节 / 210° / 限速 25', s: { speed: 25, direction: 210, limit: 25 } },
+    { t: '满刻度', d: '30 节 → 箭头恰好贴到圆边界', s: { speed: 30, direction: 90, limit: 30 } },
+    { t: '无限速', d: '8 节 / 300°，不出现红色圆与限速值', s: { speed: 8, direction: 300, limit: null } },
+    { t: 'SPD 故障', d: '箭头与速度刻度消失，圆内黄色带框 SPD', s: { speed: 0, direction: 40, limit: 25, speedFault: true } },
+    { t: 'LIM 故障', d: '左下角限速值位置显示黄色带框 LIM', s: { speed: 18, direction: 135, limit: 25, limitFault: true } },
+    { t: 'DIR 故障', d: '箭头推定指向外圈角度指示（屏幕正上方），右下角黄色带框 DIR', s: { speed: 15, direction: 200, limit: 25, directionFault: true } },
+    { t: '多重故障', d: 'SPD + LIM + DIR 同时出现', s: { speed: 0, direction: 0, limit: 25, speedFault: true, limitFault: true, directionFault: true } },
+    { t: '盘面转动 120°', d: '方向 250° 不变，屏幕角度 = 250−120 = 130°', s: { speed: 20, direction: 250, limit: 18 }, o: { ringRotation: 120 } },
+    { t: '盘面 120° + DIR 故障', d: '推定方向 = 外圈角度指示 120° → 屏幕 0°（箭头朝上）', s: { speed: 20, direction: 250, limit: 18, directionFault: true }, o: { ringRotation: 120 } }
+  ];
+
+  var wrap = document.getElementById('cases');
+  cases.forEach(function (c) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    var cv = document.createElement('canvas');
+    card.appendChild(cv);
+    var t = document.createElement('div'); t.className = 't'; t.textContent = c.t; card.appendChild(t);
+    var d = document.createElement('div'); d.className = 'd'; d.textContent = c.d; card.appendChild(d);
+    wrap.appendChild(card);
+    G.draw(cv, c.s, Object.assign({ pixelRatio: Math.min(2, window.devicePixelRatio || 1) }, c.o || {}));
+  });
+
+  /* ---------------- 交互调试 ---------------- */
+  var big = document.getElementById('big');
+  var gauge = new G(big, { pixelRatio: 3 });
+  big.style.width = '264px';
+  big.style.height = '264px';
+
+  var el = function (id) { return document.getElementById(id); };
+  var ui = { sp: el('sp'), dr: el('dr'), lm: el('lm'), rt: el('rt'), dfm: el('dfm'),
+             fSpd: el('fSpd'), fLim: el('fLim'), fDir: el('fDir'), noLim: el('noLim') };
+
+  function current() {
+    return {
+      speed: parseFloat(ui.sp.value),
+      direction: parseInt(ui.dr.value, 10),
+      limit: ui.noLim.checked ? null : parseInt(ui.lm.value, 10),
+      speedFault: ui.fSpd.checked,
+      limitFault: ui.fLim.checked,
+      directionFault: ui.fDir.checked
+    };
+  }
+
+  function update() {
+    var st = current();
+    el('spV').textContent = st.speed.toFixed(1);
+    el('drV').textContent = st.direction + '°';
+    el('lmV').textContent = st.limit == null ? '—' : st.limit;
+    el('rtV').textContent = ui.rt.value + '°';
+
+    var rot = parseInt(ui.rt.value, 10);
+    gauge.setOptions({ ringRotation: rot, directionFaultEstimate: ui.dfm.value }).render(st);
+
+    var shown = st.directionFault
+      ? gauge.directionToScreen(ui.dfm.value === 'double' ? rot * 2 : rot)
+      : gauge.directionToScreen(st.direction);
+    el('stateOut').textContent =
+      'gauge.render(' + JSON.stringify(st) + ', { ringRotation: ' + rot +
+      ', directionFaultEstimate: "' + ui.dfm.value + '" })\n' +
+      '箭头屏幕角度 = ' + shown.toFixed(0) + '°（0° = 正上方，顺时针）';
+  }
+
+  Object.keys(ui).forEach(function (k) {
+    ui[k].addEventListener('input', update);
+  });
+  update();
+
+  /* ---------------- 动态演示 ---------------- */
+  var a1 = new G(document.getElementById('anim1'), { pixelRatio: 2 });
+  var a2 = new G(document.getElementById('anim2'), { pixelRatio: 2, ringRotation: 0 });
+  var a3 = new G(document.getElementById('anim3'), { pixelRatio: 2, ringRotation: 0 });
+
+  var t0 = performance.now();
+  (function loop(now) {
+    var t = (now - t0) / 1000;
+
+    a1.render({
+      speed: 16 + 13 * Math.sin(t * 0.55),
+      direction: (t * 34) % 360,
+      limit: 22
+    });
+
+    // 速度方向固定 200°，盘面持续转动 → 箭头屏幕指向随之改变
+    a2.setOptions({ ringRotation: (t * 26) % 360 }).render({
+      speed: 12 + 8 * Math.sin(t * 0.9),
+      direction: 200,
+      limit: 18
+    });
+
+    // 方向故障：推定方向 = 外圈角度指示，箭头恒指向正上方
+    a3.setOptions({ ringRotation: (t * 26) % 360 }).render({
+      speed: 14 + 6 * Math.sin(t * 0.7),
+      direction: 200,
+      limit: 18,
+      directionFault: true
+    });
+
+    requestAnimationFrame(loop);
+  })(t0);
+})();
+</script>
+</body>
+</html>

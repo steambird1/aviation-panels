@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>垂直速度表 VSI 演示</title>
+<style>
+  body { background:#17191b; color:#d6dade; font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; margin:0; padding:24px; }
+  h2 { font-size:16px; font-weight:600; margin:0 0 16px; }
+  .row { display:flex; flex-wrap:wrap; gap:24px; }
+  .item { text-align:center; }
+  .item canvas { display:block; background:transparent; }
+  .cap { font-size:12px; color:#8b949c; margin-top:6px; }
+  .panel { margin-top:32px; padding-top:20px; border-top:1px solid #2a2e31; }
+  input[type=range] { width:320px; }
+  code { background:#22262a; padding:2px 6px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+
+<h2>静态示例（132 × 132）</h2>
+<div class="row" id="static"></div>
+
+<div class="panel">
+  <h2>实时示例</h2>
+  <div class="row">
+    <div class="item">
+      <canvas id="live"></canvas>
+      <div class="cap">拖动滑块：垂直速度 <b id="vTxt">0</b> ft/min</div>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <input id="slider" type="range" min="-9000" max="9000" step="50" value="0">
+  </div>
+  <div class="cap" style="text-align:left;max-width:640px">
+    TCAS：<code>{ green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }</code>
+    —— 指针在 ±8000 处限幅，刻度在右侧留 5% 半圆空白。
+  </div>
+</div>
+
+<script src="../scripts/VerticalSpeedIndication.js"></script>
+<script>
+  // ---- 静态示例 ----
+  const cases = [
+    { v: 0,     t: null, cap: 'vspd = 0，无 TCAS' },
+    { v: 1800,  t: { green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }, cap: 'vspd = +1800，红/绿 TCAS' },
+    { v: -3000, t: { red: [{lo:-4000, hi:-1200}] },                            cap: 'vspd = -3000，红色 TCAS' },
+    { v: -9000, t: { green: [{lo:-500, hi:500}], red: [{lo:-4000, hi:-1500}] }, cap: 'vspd = -9000（限幅到 -8000）' },
+  ];
+  const box = document.getElementById('static');
+  for (const c of cases) {
+    const wrap = document.createElement('div');
+    wrap.className = 'item';
+    const cv = document.createElement('canvas');
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = c.cap;
+    wrap.appendChild(cv); wrap.appendChild(cap); box.appendChild(wrap);
+    const vsi = new VerticalSpeedIndication(cv);   // 构造时接收 canvas DOM
+    vsi.updateDisplay(c.v, c.t);                   // 数据更新后才刷新画面
+  }
+
+  // ---- 实时示例 ----
+  const live = new VerticalSpeedIndication(document.getElementById('live'));
+  const slider = document.getElementById('slider');
+  const vTxt = document.getElementById('vTxt');
+  const tcas = { green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] };
+  function refresh() {
+    const v = Number(slider.value);
+    vTxt.textContent = v;
+    live.updateDisplay(v, tcas);
+  }
+  slider.addEventListener('input', refresh);
+  refresh();
+</script>
+</body>
+</html>

@@ -212,6 +212,17 @@
   /* ---------------- 对外接口 ---------------- */
 
   NavDisplay.prototype.setInput = function (input) { this.input = input || {}; return this; };
+
+  /**
+   * 按当前（或给定）输入重算布局但不绘制，返回布局对象。
+   * 雷达数据是「屏幕空间栅格」，其内容取决于当前布局（尤其是 pxPerNm）。
+   * 因此调用方应在生成雷达栅格之前先调用本方法拿到最新布局，再调 draw()，
+   * 否则栅格会用上一帧的比例尺生成，出现与地图内容不匹配的错误缩放。
+   */
+  NavDisplay.prototype.updateLayout = function (input) {
+    if (input) this.input = input;
+    return this._layout();
+  };
   NavDisplay.prototype.setOption = function (k, v) { this.options[k] = v; return this; };
 
   /** 调整比例尺（竖线顶端对应的距离，NM） */
@@ -330,11 +341,17 @@
    *   showNames: true,
    *   radar: {
    *     mode: 'off'|'wxr'|'terr',
-   *     data: Uint8Array(W*H),     // 0..5，索引 y*W+x
+   *     data: Uint8Array(W*H),     // 0..5，索引 y*W+x；屏幕空间栅格，
+   *                                // 须在 updateLayout() 之后按当前 pxPerNm 生成
    *     terrain: {lines:[{text:'2400',color:'yellow'},{text:'1500',color:'red'}]}
    *   },
-   *   extraInfo: {show:true, width:110, side:'right'}  // 其它导航信息区域（内容待实现）
+   *   extraInfo: {show:true, height:110, side:'bottom'} // 其它导航信息区域（本库不绘制其内容）
+   *   vnav: {...}                                      // 垂直导航剖面数据，见 vnav.js
    * }
+   *
+   * 其它导航信息区域的绘制可通过 options.extraRenderer 注入：
+   *   nd.setOption('extraRenderer', new VNavPanel({...}));
+   * 渲染器接口：renderer.draw(ctx, rect, layout, input)
    */
   NavDisplay.prototype.draw = function (input) {
     if (input) this.input = input;
@@ -360,19 +377,39 @@
     this._drawAircraft();         // 底部飞机（顶角较大的等腰三角形）
     this._drawRadarLabel();       // WXR / TERR + 两行数字
     if (inp.mapFault) this._drawFlag(L.cx, L.acY - L.r * 0.5, 'MAP', C.amber);
-    if (o.extraInfoOutline && (L.extraW > 0 || L.extraH > 0)) {
+    this._drawExtraRegion();
+    return this;
+  };
+
+  /**
+   * “其它导航信息区域”：本库不绘制其内容（预留），
+   * 但支持注入外部渲染器（options.extraRenderer）来填充，例如 VNavPanel。
+   * 渲染器接口：renderer.draw(ctx, rect, layout, input)
+   */
+  NavDisplay.prototype._drawExtraRegion = function () {
+    var o = this.options, L = this.L, ctx = this.ctx;
+    if (!(L.extraW > 0 || L.extraH > 0)) return;
+
+    var rect;
+    if (L.extraSide === 'bottom') {
+      rect = { x: 0, y: L.navH, w: this.width, h: L.extraH };
+    } else if (L.extraSide === 'left') {
+      rect = { x: 0, y: 0, w: L.extraW, h: this.height };
+    } else {
+      rect = { x: L.navW, y: 0, w: L.extraW, h: this.height };
+    }
+
+    var r = o.extraRenderer;
+    if (r && typeof r.draw === 'function') r.draw(ctx, rect, L, this.input);
+
+    if (o.extraInfoOutline) {
       ctx.save();
       ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = C.grey;
+      ctx.strokeStyle = o.colors.grey;
       ctx.lineWidth = 1;
-      var ex = (L.extraSide === 'left') ? 0 : (L.extraSide === 'bottom' ? 0 : L.navW);
-      var ey = (L.extraSide === 'bottom') ? L.navH : 0;
-      var ew = L.extraW > 0 ? L.extraW : this.width;
-      var eh = L.extraH > 0 ? L.extraH : this.height;
-      ctx.strokeRect(ex + 0.5, ey + 0.5, ew - 1, eh - 1);
+      ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
       ctx.restore();
     }
-    return this;
   };
 
   /* ---------------- 地图区域 ---------------- */
@@ -841,6 +878,9 @@
 
   /* ------------------------------------------------------------------------ */
   return {
+    /* 库版本：demo_nd.js 会用它判断浏览器加载的是否为最新脚本
+       （file:// 下 ?v=xxx 的缓存失效不可靠，旧脚本可能仍被复用） */
+    VERSION: '1.6.0',
     NavDisplay: NavDisplay,
     RADAR_LEVEL: RADAR_LEVEL,
     RADAR_RGBA: RADAR_RGBA,
