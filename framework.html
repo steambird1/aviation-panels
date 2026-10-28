@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空客驾驶舱风格组件库</title>
     <link rel="stylesheet" href="styles/inst_general.css" />
-    <link rel="stylesheet" href="styles/panel_style.css?v=20261030" />
+    <link rel="stylesheet" href="styles/panel_style.css?v=20261031" />
 </head>
 <body>
 
@@ -560,13 +560,14 @@
 
                 // --- 配平轮演示 ---
                 const panel5 = new Panel('panel-5', {
-                    columns: 5,
+                    columns: 9,
                     rows: 4,
                     cellSize: 44,
                     gap: 8,
                     panelId: 'wheel-panel',
                 });
-                const trimWheel = new TrimWheel('trim-wheel', {
+                const trimWheelSide = new TrimWheel('trim-wheel-side', {
+                    appearance: 'side',
                     minValue: -5,
                     maxValue: 5,
                     initialValue: 0,
@@ -574,12 +575,29 @@
                     diameter: 86,
                     valueDisplayPrecision: 1,
                     showValue: true,
-                    label: 'PITCH TRIM',
+                    label: 'PITCH TRIM SIDE',
                     labelPosition: 'top',
                 });
-                panel5.addComponent(trimWheel, { row: 1, col: 1, rowSpan: 3, colSpan: 3 });
-                trimWheel.on('change', (data) => {
-                    console.log(`配平轮 ${data.cmpName} 当前值: ${data.value.toFixed(1)}`);
+                panel5.addComponent(trimWheelSide, { row: 1, col: 1, rowSpan: 3, colSpan: 3 });
+                trimWheelSide.on('change', (data) => {
+                    console.log(`侧视配平轮 ${data.cmpName} 当前值: ${data.value.toFixed(1)}`);
+                });
+
+                const trimWheelTop = new TrimWheel('trim-wheel-top', {
+                    appearance: 'top',
+                    minValue: -5,
+                    maxValue: 5,
+                    initialValue: 0,
+                    valuePerRevolution: 2,
+                    diameter: 86,
+                    valueDisplayPrecision: 1,
+                    showValue: true,
+                    label: 'PITCH TRIM TOP',
+                    labelPosition: 'top',
+                });
+                panel5.addComponent(trimWheelTop, { row: 1, col: 5, rowSpan: 3, colSpan: 3 });
+                trimWheelTop.on('change', (data) => {
+                    console.log(`俯视配平轮 ${data.cmpName} 当前值: ${data.value.toFixed(1)}`);
                 });
 
                 console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');

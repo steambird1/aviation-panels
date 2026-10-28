@@ -278,6 +278,7 @@ export const COMPONENT_TYPES = {
         icon: '◉',
         defaultGrid: { colSpan: 3, rowSpan: 3 },
         defaults: {
+            appearance: 'side',
             minValue: -5,
             maxValue: 5,
             initialValue: 0,
@@ -290,6 +291,15 @@ export const COMPONENT_TYPES = {
             labelOrientation: 'horizontal',
         },
         fields: withLabelFields([
+            {
+                key: 'appearance',
+                label: '外观',
+                type: 'select',
+                options: [
+                    { value: 'side', label: '侧视（当前）' },
+                    { value: 'top', label: '俯视（三辐轮）' },
+                ],
+            },
             NUMBER('minValue', '最小值', { step: 0.1 }),
             NUMBER('maxValue', '最大值', { step: 0.1 }),
             NUMBER('initialValue', '初始值', { step: 0.1 }),

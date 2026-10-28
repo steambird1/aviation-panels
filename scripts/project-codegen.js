@@ -1,6 +1,6 @@
 // ==================== 项目 JSON -> JavaScript 代码生成 ====================
 
-const STYLE_HELPER = `const STYLE_HREF = new URL('./styles/panel_style.css?v=20261030', import.meta.url).href;
+const STYLE_HELPER = `const STYLE_HREF = new URL('./styles/panel_style.css?v=20261031', import.meta.url).href;
 
 function ensureStyles() {
     const existing = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))

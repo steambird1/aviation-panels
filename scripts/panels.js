@@ -2626,6 +2626,7 @@ export class TrimWheel extends BaseComponent {
             labelOrientation = 'horizontal',
             valueDisplayPrecision = 1,
             showValue = true,
+            appearance = 'side',
         } = options;
 
         const min = Number(minValue);
@@ -2656,6 +2657,7 @@ export class TrimWheel extends BaseComponent {
             ? clamp(precision, 0, 4)
             : 1;
         this.showValue = showValue !== false;
+        this.appearance = appearance === 'top' ? 'top' : 'side';
         this.keyboardStep = 10 ** -this.valueDisplayPrecision;
         this._isDragging = false;
         this._dragStartValue = 0;
@@ -2681,6 +2683,7 @@ export class TrimWheel extends BaseComponent {
 
         this.wheelContainer = document.createElement('div');
         this.wheelContainer.className = 'trim-wheel-container';
+        this.wheelContainer.classList.toggle('is-top-view', this.appearance === 'top');
         this.wheelContainer.style.width = `${containerSize}px`;
         this.wheelContainer.style.height = `${containerSize}px`;
         this.wheelContainer.tabIndex = 0;
@@ -2696,7 +2699,9 @@ export class TrimWheel extends BaseComponent {
         this.wheelContainer.appendChild(this.valueDisplay);
 
         this.wheelEl = document.createElement('div');
-        this.wheelEl.className = 'trim-wheel';
+        this.wheelEl.className = this.appearance === 'top'
+            ? 'trim-wheel trim-wheel-top'
+            : 'trim-wheel trim-wheel-side';
         this.wheelEl.style.width = `${this.diameter}px`;
         this.wheelEl.style.height = `${this.diameter}px`;
         this.wheelEl.style.left = `${wheelOffset}px`;
@@ -2717,6 +2722,17 @@ export class TrimWheel extends BaseComponent {
         this.wheelIndex = document.createElement('span');
         this.wheelIndex.className = 'trim-wheel-index';
 
+        this.wheelTopRim = document.createElement('div');
+        this.wheelTopRim.className = 'trim-wheel-top-rim';
+        this.wheelTopSpokes = [0, 120, 240].map((angle) => {
+            const spoke = document.createElement('span');
+            spoke.className = 'trim-wheel-top-spoke';
+            spoke.style.transform = `rotate(${angle}deg)`;
+            return spoke;
+        });
+
+        this.wheelRotor.appendChild(this.wheelTopRim);
+        this.wheelTopSpokes.forEach((spoke) => this.wheelRotor.appendChild(spoke));
         this.wheelRotor.appendChild(this.wheelMarker);
         this.wheelRotor.appendChild(this.wheelHub);
         this.wheelEl.appendChild(this.wheelBezel);
@@ -2859,6 +2875,7 @@ export class TrimWheel extends BaseComponent {
             diameter: this.diameter,
             valueDisplayPrecision: this.valueDisplayPrecision,
             showValue: this.showValue,
+            appearance: this.appearance,
         };
     }
 

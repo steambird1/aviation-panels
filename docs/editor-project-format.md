@@ -731,7 +731,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
 
 ### 6.11 TrimWheel — 配平轮
 
-`TrimWheel` 是一个俯视视角的可旋转配平轮，适合用于俯仰配平等连续调节场景。轮盘默认占 `3 × 3` 网格，支持拖动、鼠标滚轮和方向键调节。
+`TrimWheel` 是一个可旋转的配平轮，提供两种外观：默认的侧视轮盘，以及嵌入式三辐俯视轮盘。适合用于俯仰配平等连续调节场景。轮盘默认占 `3 × 3` 网格，支持拖动、鼠标滚轮和方向键调节。
 
 ```json
 {
@@ -739,6 +739,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
   "type": "TrimWheel",
   "grid": { "row": 1, "col": 1, "rowSpan": 3, "colSpan": 3 },
   "props": {
+    "appearance": "top",
     "minValue": -5,
     "maxValue": 5,
     "initialValue": 0,
@@ -755,6 +756,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
 
 | 属性 | 类型 | 默认值 | 取值范围 | 说明 |
 | --- | --- | --- | --- | --- |
+| `appearance` | string | `"side"` | `"side"` / `"top"` | 外观。`side` 为保留的侧视轮盘，`top` 为嵌入式三辐俯视轮盘。 |
 | `minValue` | number | `-5` | — | 最小值，到达后停止。 |
 | `maxValue` | number | `5` | — | 最大值，到达后停止。 |
 | `initialValue` | number | `0` | `minValue ~ maxValue` | 初始值。 |
@@ -765,6 +767,8 @@ group.getBrightnesses();  // 整个灯组亮度数组
 | `label` | string | `"PITCH TRIM"` | — | 外部标签。 |
 | `labelPosition` | string | `"top"` | — | 标签位置。 |
 | `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
+
+`appearance: "top"` 使用与面板齐平的嵌入式圆槽、三根辐条和镂空区域表现俯视视角；固定指示三角位于轮盘顶部，轮盘和辐条围绕中心旋转。`appearance: "side"` 保留原有的侧视轮盘外观。
 
 交互说明：
 

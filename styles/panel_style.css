@@ -887,6 +887,108 @@ body {
     pointer-events: none;
 }
 
+/* 俯视外观：嵌入式三辐手轮 */
+.trim-wheel-top-rim,
+.trim-wheel-top-spoke {
+    display: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-bezel {
+    background: radial-gradient(circle at 50% 45%, #242a31 0%, #101318 70%, #0a0c10 100%);
+    border: 1px solid #4b525d;
+    box-shadow:
+        inset 0 4px 10px rgba(0, 0, 0, 0.85),
+        inset 0 -2px 5px rgba(255, 255, 255, 0.05),
+        0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.trim-wheel-container.is-top-view .trim-wheel-bezel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+        from 0deg,
+        rgba(210, 220, 235, 0.42) 0deg 1deg,
+        transparent 1deg 30deg
+    );
+    -webkit-mask: radial-gradient(circle, transparent 0 86%, #000 87% 92%, transparent 93%);
+    mask: radial-gradient(circle, transparent 0 86%, #000 87% 92%, transparent 93%);
+    opacity: 0.7;
+    pointer-events: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-rotor {
+    inset: 7px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-rotor::before {
+    display: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-top-rim,
+.trim-wheel-container.is-top-view .trim-wheel-top-spoke {
+    display: block;
+}
+.trim-wheel-container.is-top-view .trim-wheel-top-rim {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: 50%;
+    border: 11px solid #4a505a;
+    box-shadow:
+        inset 0 2px 2px rgba(255, 255, 255, 0.17),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.55),
+        0 1px 2px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-top-rim::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+        from 0deg,
+        rgba(255, 255, 255, 0.22) 0deg 2deg,
+        rgba(0, 0, 0, 0.08) 2deg 5deg
+    );
+    -webkit-mask: radial-gradient(circle, transparent 0 74%, #000 75% 100%);
+    mask: radial-gradient(circle, transparent 0 74%, #000 75% 100%);
+    opacity: 0.8;
+    pointer-events: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-top-spoke {
+    position: absolute;
+    left: 43%;
+    bottom: 50%;
+    z-index: 2;
+    width: 14%;
+    height: 46%;
+    border-radius: 40% 40% 18% 18%;
+    background: linear-gradient(90deg, #343a43 0%, #626974 45%, #383e47 100%);
+    border: 1px solid #747b87;
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.2),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.45),
+        0 1px 2px rgba(0, 0, 0, 0.4);
+    transform-origin: 50% 100%;
+    pointer-events: none;
+}
+.trim-wheel-container.is-top-view .trim-wheel-marker {
+    top: 4%;
+    z-index: 5;
+    width: 5px;
+    height: 12%;
+    background: linear-gradient(180deg, #ffe6a3, #e8a93b);
+}
+.trim-wheel-container.is-top-view .trim-wheel-hub {
+    z-index: 5;
+    width: 30%;
+    height: 30%;
+}
+.trim-wheel-container.is-top-view .trim-wheel-index {
+    top: -2px;
+    z-index: 7;
+}
+
 /* ========== 拨杆容器 ========== */
 .lever-container {
     position: relative;
