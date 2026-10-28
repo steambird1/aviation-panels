@@ -32,9 +32,13 @@
   <div style="margin-top:16px">
     <input id="slider" type="range" min="-9000" max="9000" step="50" value="0">
   </div>
+  <div style="margin-top:8px">
+    机械游标：<input id="cslider" type="range" min="0" max="8000" step="50" value="1500">
+    <button id="ctoggle" style="margin-left:8px">隐藏游标</button>
+  </div>
   <div class="cap" style="text-align:left;max-width:640px">
-    TCAS：<code>{ green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }</code>
-    —— 指针在 ±8000 处限幅，刻度在右侧留 5% 半圆空白。
+    TCAS：<code>{ green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }</code><br>
+    0~500 段占 65°，其余段等比压缩；指针与游标均在 ±8000 处限幅，刻度在右侧留 9° 空白。
   </div>
 </div>
 
@@ -42,10 +46,10 @@
 <script>
   // ---- 静态示例 ----
   const cases = [
-    { v: 0,     t: null, cap: 'vspd = 0，无 TCAS' },
-    { v: 1800,  t: { green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }, cap: 'vspd = +1800，红/绿 TCAS' },
-    { v: -3000, t: { red: [{lo:-4000, hi:-1200}] },                            cap: 'vspd = -3000，红色 TCAS' },
-    { v: -9000, t: { green: [{lo:-500, hi:500}], red: [{lo:-4000, hi:-1500}] }, cap: 'vspd = -9000（限幅到 -8000）' },
+    { v: 0,     t: null, c: 500,    cap: 'vspd = 0，游标 +500' },
+    { v: 1800,  t: { green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] }, c: 500,    cap: 'vspd = +1800，红/绿 TCAS' },
+    { v: -3000, t: { red: [{lo:-4000, hi:-1200}] },                            c: -1200,  cap: 'vspd = -3000，红色 TCAS' },
+    { v: -9000, t: { green: [{lo:-500, hi:500}], red: [{lo:-4000, hi:-1500}] }, c: 4000,  cap: 'vspd = -9000（限幅），游标 +4000' },
   ];
   const box = document.getElementById('static');
   for (const c of cases) {
@@ -57,7 +61,7 @@
     cap.textContent = c.cap;
     wrap.appendChild(cv); wrap.appendChild(cap); box.appendChild(wrap);
     const vsi = new VerticalSpeedIndication(cv);   // 构造时接收 canvas DOM
-    vsi.updateDisplay(c.v, c.t);                   // 数据更新后才刷新画面
+    vsi.updateDisplay(c.v, c.t, c.c);              // 第三参（可选）为机械游标位置
   }
 
   // ---- 实时示例 ----
@@ -65,13 +69,26 @@
   const slider = document.getElementById('slider');
   const vTxt = document.getElementById('vTxt');
   const tcas = { green: [{lo:-500, hi:500}], red: [{lo:1500, hi:4000}] };
+  const cslider = document.getElementById('cslider');
+  const ctoggle = document.getElementById('ctoggle');
+  let cursorOn = true;
   function refresh() {
     const v = Number(slider.value);
     vTxt.textContent = v;
-    live.updateDisplay(v, tcas);
+    live.updateDisplay(v, tcas);                       // 也可写成 live.updateDisplay(v, tcas, cursorValue)
+  }
+  function refreshCursor() {
+    live.setCursor(cursorOn ? Number(cslider.value) : null);
   }
   slider.addEventListener('input', refresh);
+  cslider.addEventListener('input', refreshCursor);
+  ctoggle.addEventListener('click', function () {
+    cursorOn = !cursorOn;
+    ctoggle.textContent = cursorOn ? '隐藏游标' : '显示游标';
+    refreshCursor();
+  });
   refresh();
+  refreshCursor();
 </script>
 </body>
 </html>

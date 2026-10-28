@@ -9,8 +9,14 @@
  *   · 两段关于水平中心线严格对称
  *   · 8000 之后留 5% 半圆（9°）的空白，因此刻度/指针都不会出现在正右方附近
  *
- * 刻度分段（各段占半圆比例，段内刻度线均匀）：
- *   0~500:25%  500~1000:20%  1000~2000:25%  2000~4000:20%  4000~8000:5%  8000 之后 5% 留空
+ * 刻度分段（段内刻度线均匀，段间按下列角度分配）：
+ *   0~500       : 65°      ← 低速率区放大，便于读数
+ *   500~1000    : 30.29°   ← 以下三段由原 20% / 25% / 20% / 5% 等比压缩而来
+ *   1000~2000   : 37.86°
+ *   2000~4000   : 30.29°
+ *   4000~8000   : 7.57°
+ *   8000 之后   : 9°（半圆的 5%）留空
+ * 压缩方式：半圆 180° 中先扣除 65° 与末尾 9° 留空，剩余 106° 按 20 : 25 : 20 : 5 分配。
  */
 (function (global) {
     'use strict';
@@ -23,37 +29,52 @@
     const ZERO_DEG = 180;                   // 0 刻度所在角度
     const SEMI = 180;                       // 半圆对应的角度
 
-    // 刻度分段：lo/hi 为值域，pct 为该段占半圆的比例，step 为段内均匀细分步长
+    const END_GAP_DEG = 9;                  // 8000 之后留空的角度（半圆的 5%）
+
+    // 0~500 段放大到 65°；其余段把剩余角度按原权重等比压缩
+    const FIRST_DEG = 65;
+    const REST_DEG = SEMI - FIRST_DEG - END_GAP_DEG;   // 106°
+    const REST_W = [20, 25, 20, 5];                    // 原占比权重，合计 70
+    const REST_W_SUM = REST_W.reduce((a, b) => a + b, 0);
+
+    // 刻度分段：lo/hi 为值域，deg 为该段占用的角度，pct 为其占半圆的比例，step 为段内细分步长
     const SEGMENTS = [
-        { lo: 0,    hi: 500,  pct: 0.25, step: 100  },
-        { lo: 500,  hi: 1000, pct: 0.20, step: 100  },
-        { lo: 1000, hi: 2000, pct: 0.25, step: 200  },
-        { lo: 2000, hi: 4000, pct: 0.20, step: 500  },
-        { lo: 4000, hi: 8000, pct: 0.05, step: 2000 },
-        // 8000 之后剩下 5% 半圆（9°）留空，不绘制任何刻度
+        { lo: 0,    hi: 500,  deg: FIRST_DEG, step: 100  },
+        { lo: 500,  hi: 1000, deg: 0,         step: 100  },
+        { lo: 1000, hi: 2000, deg: 0,         step: 200  },
+        { lo: 2000, hi: 4000, deg: 0,         step: 500  },
+        { lo: 4000, hi: 8000, deg: 0,         step: 2000 },
+        // 8000 之后 END_GAP_DEG 留空，不绘制任何刻度
     ];
+    for (let i = 1; i < SEGMENTS.length; i++) {
+        SEGMENTS[i].deg = REST_DEG * REST_W[i - 1] / REST_W_SUM;
+    }
+    for (const s of SEGMENTS) s.pct = s.deg / SEMI;
 
     // 需要标注数字的刻度，text 为表盘写法（单位：1000 英尺/分钟）
-    // dr：数字所在半径的修正量。4000 与 8000 在盘面上仅相距 9°，将 8000 略向外挪，避免数字粘连
+    // dr：数字所在半径的修正量。4000 与 8000 在盘面上仅相距 7.6°，把 8000 外挪避免数字粘连
     const LABELS = [
         { v: 0,    text: '0',  dr: 0 },
         { v: 500,  text: '.5', dr: 0 },
         { v: 1000, text: '1',  dr: 0 },
         { v: 2000, text: '2',  dr: 0 },
         { v: 4000, text: '4',  dr: 0 },
-        { v: 8000, text: '8',  dr: 3 },
+        { v: 8000, text: '8',  dr: 5 },
     ];
 
     // 各元素的半径（由外向内）
     const R = {
         dial:     62,   // 仪表外轮廓圆
         tickOut:  57,   // 刻度线外端
-        tickInMj: 46,   // 主刻度线内端
+        tickInMj: 44,   // 主刻度线内端
         tickInMn: 52,   // 次刻度线内端
-        number:   38,   // 数字中心
+        number:   37,   // 数字中心
         tcasOut:  31,   // TCAS 弧外缘
         tcasIn:   26,   // TCAS 弧内缘
         needle:   52,   // 指针针尖
+        curTip:   54,   // 机械游标尖端（指向刻度）
+        curBase:  61.5, // 机械游标底边（贴着外轮廓内侧）
+        curHalf:  4.2,  // 机械游标底边半宽
     };
 
     const COLOR = {
@@ -65,6 +86,9 @@
         tcasIdle:  '#1b1f22',   // TCAS 弧底色（与表盘背景有细微区别）
         tcasRed:   '#ff3b30',   // TCAS 红色段
         tcasGreen: '#32d74b',   // TCAS 绿色段
+        curFace:   '#e6eaed',   // 机械游标金属面
+        curEdge:   '#2b3134',   // 机械游标描边
+        curSlot:   '#8d969c',   // 机械游标上的凹槽
     };
 
     /* ---------------- 数值 → 角度 ---------------- */
@@ -118,6 +142,7 @@
 
             this.vspd = 0;
             this.tcas = null;
+            this.cursor = null;
 
             this.updateDisplay(0, null);
         }
@@ -129,11 +154,28 @@
          * @param {{ red: {lo: number, hi:number}[], green: {lo: number, hi:number}[] } | null} tcas
          *        tcas 显示，lo 与 hi 表示每段的范围，格式与 vspd 相同。保证给出的范围不重叠。
          *        若本参数为 null，则清空 tcas 显示区域。
+         * @param {number|null} [cursor] 可选，机械游标要指示的垂直速度值（同样按 ±8000 限幅）；
+         *        省略时沿用上一次设定的位置，传 null 则隐藏游标。
          */
-        updateDisplay(vspd, tcas) {
+        updateDisplay(vspd, tcas, cursor) {
             this.vspd = clampValue(vspd);
             this.tcas = (tcas && (tcas.red || tcas.green)) ? tcas : null;
+            if (cursor !== undefined) this.cursor = this._normCursor(cursor);
             this._render();
+        }
+
+        /**
+         * 设置机械游标（表盘外圈的手动参考标记）位置，并立即重绘。
+         * @param {number|null} value 游标对应的垂直速度值；null 表示不显示游标
+         */
+        setCursor(value) {
+            this.cursor = this._normCursor(value);
+            this._render();
+        }
+
+        _normCursor(value) {
+            if (value === null || value === undefined) return null;
+            return clampValue(value);
         }
 
         /* ----- 绘制主流程 ----- */
@@ -146,6 +188,7 @@
             this._drawTcas();
             this._drawTicks();
             this._drawNumbers();
+            this._drawCursor();
             this._drawNeedle();
             ctx.restore();
         }
@@ -240,6 +283,39 @@
                     ctx.fillText(l.text, CENTER + Math.cos(a) * r, CENTER + Math.sin(a) * r);
                 }
             }
+        }
+
+        /** 机械游标：骑在外圈刻度上的可设定参考标记，尖端指向刻度 */
+        _drawCursor() {
+            if (this.cursor === null) return;
+            const ctx = this.ctx;
+            const a = angleOf(this.cursor);
+            const dx = Math.cos(a), dy = Math.sin(a);   // 径向（指向刻度）
+            const px = -dy, py = dx;                    // 切向
+
+            const tip = R.curTip, base = R.curBase, half = R.curHalf;
+            const tx = CENTER + dx * tip,          ty = CENTER + dy * tip;
+            const ax = CENTER + dx * base + px * half, ay = CENTER + dy * base + py * half;
+            const bx = CENTER + dx * base - px * half, by = CENTER + dy * base - py * half;
+
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(tx, ty);
+            ctx.lineTo(bx, by);
+            ctx.closePath();
+            ctx.fillStyle = COLOR.curFace;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = COLOR.curEdge;
+            ctx.stroke();
+
+            // 中间的凹槽，做出金属薄片的机械质感
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo((ax + bx) / 2, (ay + by) / 2);
+            ctx.lineWidth = 0.8;
+            ctx.strokeStyle = COLOR.curSlot;
+            ctx.stroke();
         }
 
         /** 指针：从圆心指向当前垂直速度，超过 ±8000 时停在 8000 */

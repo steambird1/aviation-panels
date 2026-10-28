@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机械指针仪表 · 132 × 132 Canvas</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 48px;
+    background: #10131a;
+    color: #e6e9ef;
+    font: 14px/1.6 "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: .5px; }
+  .sub { margin: 0 0 24px; color: #8b94a3; font-size: 13px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  .card {
+    background: #171b24;
+    border: 1px solid #262c38;
+    border-radius: 12px;
+    padding: 22px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 14px; margin: 0 0 16px; color: #b9c1cf; font-weight: 600;
+  }
+
+  .stage { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  #gauge { display: block; border-radius: 4px; }
+
+  .ctrl { flex: 1; min-width: 260px; }
+  .row { margin-bottom: 14px; }
+  .row label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: #9aa4b4; margin-bottom: 6px;
+  }
+  .row label b { color: #ffd15c; font-variant-numeric: tabular-nums; }
+  .row.alarm label b { color: #ff6b6b; }
+  input[type=range] { width: 100%; accent-color: #ffd15c; }
+  .row.alarm input[type=range] { accent-color: #ff5b5b; }
+
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  button {
+    background: #222836; color: #dfe4ee; border: 1px solid #333b4c;
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  button:hover { background: #2b3243; }
+  button.on { background: #3a2a12; border-color: #7a5a1e; color: #ffd15c; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #9aa4b4; margin-top: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #232936; }
+  th { color: #8b94a3; font-weight: 500; }
+  td { font-variant-numeric: tabular-nums; }
+  .swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 7px; vertical-align: middle;
+  }
+
+  .gallery { display: flex; gap: 18px; flex-wrap: wrap; }
+  figure { margin: 0; text-align: center; }
+  figcaption { margin-top: 8px; font-size: 12px; color: #8b94a3; font-variant-numeric: tabular-nums; }
+
+  code { background: #222836; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: #ffd15c; }
+  .tip { color: #7f8899; font-size: 12px; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>机械指针仪表 · 132 × 132</h1>
+  <p class="sub">
+    四段非线性刻度 0 ~ 8000 · <span style="color:#fff">白色指针 = 当前值</span> ·
+    <span style="color:#ff6b6b">红白相间指针 = 警戒值</span>
+  </p>
+
+  <!-- 主仪表 -->
+  <section class="card">
+    <h2>实时交互</h2>
+    <div class="stage">
+      <canvas id="gauge"></canvas>
+
+      <div class="ctrl">
+        <div class="row">
+          <label>当前值（白色指针）<b id="valueOut">1500</b></label>
+          <input type="range" id="valueSlider" min="0" max="8000" step="10" value="1500">
+        </div>
+        <div class="row alarm">
+          <label>警戒值（红白指针）<b id="alarmOut">6000</b></label>
+          <input type="range" id="alarmSlider" min="0" max="8000" step="10" value="6000">
+        </div>
+        <div class="btns">
+          <button id="btnZero">归零</button>
+          <button id="btnFull">满量程</button>
+          <button id="btnRandom">随机</button>
+          <button id="btnAuto">自动演示</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="digitalBox" checked>显示底部数字读数窗</label>
+      </div>
+    </div>
+    <p class="tip">当前值 ≥ 警戒值时，读数窗边框与数字转为红色。</p>
+  </section>
+
+  <!-- 分段说明 -->
+  <section class="card">
+    <h2>分段刻度参数（每段的圆心角依次递减）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>分段</th><th>数值范围</th><th>占圆心角</th>
+          <th>每 1° 对应数值</th><th>相对第 1 段倍率</th><th>刻度间距</th>
+        </tr>
+      </thead>
+      <tbody id="legendBody"></tbody>
+    </table>
+    <p class="tip">
+      “相对第 1 段倍率”即：指针走过同样的弧长，在该段读到的数值变化是第 1 段的多少倍 —— 越往后的分段越大。
+    </p>
+  </section>
+
+  <!-- 对照 -->
+  <section class="card">
+    <h2>同一警戒值（6500）下不同读数的指针位置</h2>
+    <div class="gallery">
+      <figure><canvas data-value="1000" data-alarm="6500"></canvas><figcaption>1000</figcaption></figure>
+      <figure><canvas data-value="3000" data-alarm="6500"></canvas><figcaption>3000</figcaption></figure>
+      <figure><canvas data-value="5000" data-alarm="6500"></canvas><figcaption>5000</figcaption></figure>
+      <figure><canvas data-value="7000" data-alarm="6500"></canvas><figcaption>7000（超警戒）</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>文件结构</h2>
+    <p style="margin:0;font-size:13px;color:#9aa4b4">
+      <code>scripts/mechanical-gauge.js</code> —— 仪表绘制核心（无依赖，暴露全局
+      <code>MechanicalGauge</code>）<br>
+      <code>scripts/demo-altlim.js</code> —— 本页交互逻辑<br>
+      <code>html/mechanical-gauge.html</code> —— 本演示页，通过
+      <code>../scripts/xxx.js</code> 引用上级目录的脚本
+    </p>
+  </section>
+
+</div>
+
+<script src="../scripts/mechanical-gauge.js"></script>
+<script src="../scripts/demo-altlim.js"></script>
+</body>
+</html>
