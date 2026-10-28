@@ -364,6 +364,60 @@ export const COMPONENT_TYPES = {
         ]),
     },
 
+    DrumDisplay: {
+        label: '机械鼓轮显示',
+        shortLabel: '鼓轮显示',
+        group: 'displays',
+        prefix: 'drum',
+        icon: '▥',
+        defaultGrid: { colSpan: 4, rowSpan: 2 },
+        defaults: {
+            value: 0,
+            integerDigits: 3,
+            decimalPlaces: 2,
+            signMode: 'negative',
+            step: 0.01,
+            allowIntermediate: false,
+            digitHeight: 32,
+            digitWidth: 22,
+            label: 'DRUM',
+            labelPosition: 'top',
+            labelOrientation: 'horizontal',
+        },
+        fields: withLabelFields([
+            NUMBER('value', '显示值', { step: 0.01 }),
+            NUMBER('integerDigits', '整数位', { min: 1, max: 8, step: 1, integer: true }),
+            NUMBER('decimalPlaces', '小数位', { min: 0, max: 6, step: 1, integer: true }),
+            {
+                key: 'signMode',
+                label: '符号位',
+                type: 'select',
+                options: [
+                    { value: 'none', label: '无符号位（最高位为数字）' },
+                    { value: 'negative', label: '负号符号位' },
+                    { value: 'always', label: '正负号符号位' },
+                ],
+            },
+            NUMBER('step', '步进率', {
+                min: 0.000001,
+                step: 0.01,
+                hint: '例如 0.25 会自动合并末尾两位，10 会合并末尾两位整数',
+            }),
+            {
+                key: 'allowIntermediate',
+                label: '末位允许半位',
+                type: 'boolean',
+                hint: '允许最后鼓轮卡在两个数之间并显示两段数字',
+            },
+            NUMBER('digitHeight', '鼓轮高度 (px)', {
+                min: 20, max: 80, step: 1, integer: true,
+            }),
+            NUMBER('digitWidth', '单字宽度 (px)', {
+                min: 12, max: 48, step: 1, integer: true,
+            }),
+        ]),
+    },
+
     Display: {
         label: '显示屏',
         shortLabel: '显示屏',
@@ -394,7 +448,7 @@ export const COMPONENT_GROUPS = [
     { id: 'knobs', label: '旋钮', types: ['KnobDiscrete', 'KnobContinuous', 'KnobInfinite'] },
     { id: 'wheels', label: '轮盘', types: ['TrimWheel'] },
     { id: 'levers', label: '拨杆', types: ['Lever', 'LeverContinuous'] },
-    { id: 'displays', label: '显示屏', types: ['Display'] },
+    { id: 'displays', label: '显示', types: ['Display', 'DrumDisplay'] },
 ];
 
 export const PANEL_DEFAULTS = {

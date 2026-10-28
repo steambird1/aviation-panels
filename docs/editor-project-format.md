@@ -69,7 +69,8 @@ type ComponentType =
   | 'TrimWheel'
   | 'Lever'
   | 'LeverContinuous'
-  | 'Display';
+  | 'Display'
+  | 'DrumDisplay';
 ```
 
 ---
@@ -288,6 +289,7 @@ button.on('guardchange', ({ cmpName, open }) => {
 | `Lever` | 离散拨杆 | `1 × 3` |
 | `LeverContinuous` | 连续拨杆 | `4 × 1` |
 | `Display` | 显示屏 | `3 × 3` |
+| `DrumDisplay` | 机械鼓轮显示 | `4 × 2` |
 
 > `默认网格` 是编辑器从组件库拖入组件时使用的初始跨度。JSON 中的 `grid` 字段才是最终布局依据。`Display` 的默认跨度还会根据 `width`、`height` 和当前面板的 `cellSize`、`gap` 自动换算。
 
@@ -789,6 +791,64 @@ wheel.setValue(1.5);
 ```
 
 `TrimWheel` 暂不支持盖板。
+
+---
+
+### 6.12 DrumDisplay — 机械鼓轮数字显示
+
+`DrumDisplay` 是一个纯显示组件，每一位数字由独立鼓轮显示，不包含交互。支持符号位、小数点和按步进率合并末尾鼓轮。
+
+```json
+{
+  "id": "drum-trim",
+  "type": "DrumDisplay",
+  "grid": { "row": 1, "col": 1, "rowSpan": 2, "colSpan": 4 },
+  "props": {
+    "value": 1.37,
+    "integerDigits": 3,
+    "decimalPlaces": 2,
+    "signMode": "negative",
+    "step": 0.25,
+    "allowIntermediate": true,
+    "digitHeight": 32,
+    "digitWidth": 22,
+    "label": "TRIM",
+    "labelPosition": "top",
+    "labelOrientation": "horizontal"
+  }
+}
+```
+
+| 属性 | 类型 | 默认值 | 取值范围 | 说明 |
+| --- | --- | --- | --- | --- |
+| `value` | number | `0` | — | 当前显示值。 |
+| `integerDigits` | number | `3` | `1 ~ 8` | 整数位数。 |
+| `decimalPlaces` | number | `2` | `0 ~ 6` | 小数位数；为 `0` 时不显示小数点。 |
+| `signMode` | string | `"negative"` | `"none"` / `"negative"` / `"always"` | 符号位。`none` 表示最高位为数字；`negative` 表示仅负值显示 `-`；`always` 表示正值显示 `+`、负值显示 `-`。 |
+| `step` | number | `0.01` | `> 0` | 鼓轮步进率；末尾不独立的数字会自动合并为一个鼓轮。 |
+| `allowIntermediate` | boolean | `false` | — | 是否允许最后鼓轮卡在两个相邻数值之间。为 `false` 时显示值会吸附到最近的步进值。 |
+| `digitHeight` | number | `32` | `20 ~ 80` | 单个鼓轮窗口高度，单位 px。 |
+| `digitWidth` | number | `22` | `12 ~ 48` | 单个数字宽度，单位 px。 |
+| `label` | string | `"DRUM"` | — | 外部标签。 |
+| `labelPosition` | string | `"top"` | — | 标签位置。 |
+| `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
+
+步进合并示例：
+
+- `decimalPlaces: 2`、`step: 0.25`：最后两位小数合并成一个鼓轮，显示 `00`、`25`、`50`、`75`。
+- `decimalPlaces: 0`、`step: 10`：最后两位整数合并成一个鼓轮，显示 `00`、`10`、`20` … `90`。
+- `allowIntermediate: true` 时，最后鼓轮可以在两个相邻值之间显示上下两段数字；为 `false` 时自动吸附到最近步进值。
+
+运行时通过组件实例更新：
+
+```js
+const drum = getComponentByName('drum-trim');
+
+drum.setValue(1.5);
+console.log(drum.getValue());
+```
+
+`DrumDisplay` 属于显示类组件，不支持盖板。
 
 ---
 

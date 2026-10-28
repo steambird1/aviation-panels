@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空客驾驶舱风格组件库</title>
     <link rel="stylesheet" href="styles/inst_general.css" />
-    <link rel="stylesheet" href="styles/panel_style.css?v=20261031" />
+    <link rel="stylesheet" href="styles/panel_style.css?v=20261032" />
 </head>
 <body>
 
@@ -13,7 +13,7 @@
     <div id="panels-container" class="main-panel-div"></div>
 
     <script type="module">
-        import {Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, TrimWheel, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous} from "/scripts/panels.js";
+        import {Panel, Display, DrumDisplay, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, TrimWheel, Lever, registerComponent, getComponentByName, updateDisplay, LeverContinuous} from "/scripts/panels.js";
         import {AttitudeIndication} from "/scripts/att.js";
         import {AirspeedIndication} from "/scripts/airspeed.js";
         import {AltitudeIndication} from "/scripts/alt.js";
@@ -22,7 +22,7 @@
         (function() {
             
             console.log('空客驾驶舱风格组件库已加载。');
-            console.log('可用类: Panel, Display, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, TrimWheel, Lever, LeverContinuous');
+            console.log('可用类: Panel, Display, DrumDisplay, ButtonSimple, ButtonWithLights, IndicatorLight, IndicatorLightGroup, KnobDiscrete, KnobContinuous, KnobInfinite, TrimWheel, Lever, LeverContinuous');
             console.log('全局函数: updateDisplay({cmpName, upperLight, lowerLight})');
             console.log('组件文本标识: labelPosition = top | bottom | left | right；左右侧可加 labelOrientation: "vertical" 竖排');
             console.log('指示灯支持 click（灯组为 lightclick + click），不会自动改变亮度。');
@@ -600,12 +600,64 @@
                     console.log(`俯视配平轮 ${data.cmpName} 当前值: ${data.value.toFixed(1)}`);
                 });
 
+                // --- 机械鼓轮数字显示演示 ---
+                const panel6 = new Panel('panel-6', {
+                    columns: 9,
+                    rows: 4,
+                    cellSize: 44,
+                    gap: 8,
+                    panelId: 'drum-panel',
+                });
+
+                const drumTrim = new DrumDisplay('drum-trim', {
+                    value: 1.25,
+                    integerDigits: 3,
+                    decimalPlaces: 2,
+                    signMode: 'negative',
+                    step: 0.25,
+                    allowIntermediate: true,
+                    digitHeight: 32,
+                    digitWidth: 22,
+                    label: 'TRIM',
+                    labelPosition: 'top',
+                });
+                panel6.addComponent(drumTrim, { row: 1, col: 1, rowSpan: 2, colSpan: 4 });
+
+                const drumAlt = new DrumDisplay('drum-alt', {
+                    value: 1230,
+                    integerDigits: 4,
+                    decimalPlaces: 0,
+                    signMode: 'always',
+                    step: 10,
+                    allowIntermediate: false,
+                    digitHeight: 32,
+                    digitWidth: 22,
+                    label: 'ALT',
+                    labelPosition: 'top',
+                });
+                panel6.addComponent(drumAlt, { row: 1, col: 5, rowSpan: 2, colSpan: 4 });
+
+                const drumFlow = new DrumDisplay('drum-flow', {
+                    value: 42.3,
+                    integerDigits: 2,
+                    decimalPlaces: 1,
+                    signMode: 'none',
+                    step: 0.5,
+                    allowIntermediate: true,
+                    digitHeight: 32,
+                    digitWidth: 22,
+                    label: 'FLOW',
+                    labelPosition: 'top',
+                });
+                panel6.addComponent(drumFlow, { row: 3, col: 1, rowSpan: 2, colSpan: 4 });
+
                 console.log('演示面板已创建。可通过 CockpitComponents 命名空间访问所有类。');
                 console.log('配平轮支持拖动、滚轮和方向键调节（Shift + 方向键加速）。');
                 console.log('尝试在控制台运行: updateDisplay({cmpName: "btn-fd", lowerLight: 90})');
                 console.log('或: updateDisplay({cmpName: "btn-master-caution", upperLight: 95, lowerLight: 0})');
                 console.log('指示灯: updateDisplay({cmpName: "light-fault", upperLight: 90})');
                 console.log('指示灯组: updateDisplay({cmpName: "light-group", lights: [100, 0, 0, 0, 100, 0, 0, 0, 100]})');
+                console.log('鼓轮显示: getComponentByName("drum-trim").setValue(1.5)');
             }
 
             // 页面加载完成后运行演示

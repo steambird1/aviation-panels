@@ -2891,6 +2891,301 @@ export class TrimWheel extends BaseComponent {
     }
 }
 
+// ==================== 机械鼓轮数字显示 ====================
+export class DrumDisplay extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            value = 0,
+            integerDigits = 3,
+            decimalPlaces = 2,
+            signMode = 'negative',
+            step = 0.01,
+            allowIntermediate = false,
+            digitHeight = 32,
+            digitWidth = 22,
+            label = '',
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
+        } = options;
+
+        const intDigits = Math.round(Number(integerDigits));
+        this.integerDigits = Number.isFinite(intDigits) ? clamp(intDigits, 1, 8) : 3;
+        const decimals = Math.round(Number(decimalPlaces));
+        this.decimalPlaces = Number.isFinite(decimals) ? clamp(decimals, 0, 6) : 2;
+        this.signMode = ['none', 'negative', 'always'].includes(signMode)
+            ? signMode
+            : 'negative';
+        const stepValue = Number(step);
+        this.step = Number.isFinite(stepValue) && stepValue > 0
+            ? stepValue
+            : 10 ** -this.decimalPlaces;
+        this.allowIntermediate = allowIntermediate === true;
+        const height = Number(digitHeight);
+        this.digitHeight = Number.isFinite(height) ? clamp(height, 20, 80) : 32;
+        const width = Number(digitWidth);
+        this.digitWidth = Number.isFinite(width) ? clamp(width, 12, 48) : 22;
+        this.labelText = label;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
+        this.currentValue = this._normalizeValue(value);
+
+        this._buildDisplay();
+    }
+
+    _getUnit() {
+        return 10 ** -this.decimalPlaces;
+    }
+
+    _getTotalDigits() {
+        return this.integerDigits + this.decimalPlaces;
+    }
+
+    _getMaxMagnitude() {
+        return 10 ** this.integerDigits - this._getUnit();
+    }
+
+    _normalizeValue(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return 0;
+
+        let normalized = number;
+        if (!this.allowIntermediate) {
+            normalized = Math.round(normalized / this.step) * this.step;
+            normalized = Number(normalized.toFixed(10));
+        }
+        const max = this._getMaxMagnitude();
+        const min = this.signMode === 'none' ? 0 : -max;
+        return clamp(normalized, min, max);
+    }
+
+    _getMergedDigits() {
+        const total = this._getTotalDigits();
+        const stepUnits = Math.max(
+            1,
+            Math.round(Math.abs(this.step) / this._getUnit())
+        );
+        return clamp(String(stepUnits).length, 1, total);
+    }
+
+    _formatDigits(value) {
+        const total = this._getTotalDigits();
+        const maxScaled = 10 ** total - 1;
+        const scaled = clamp(
+            Math.round(Math.abs(Number(value) || 0) / this._getUnit()),
+            0,
+            maxScaled
+        );
+        return String(scaled).padStart(total, '0');
+    }
+
+    _getDisplayState() {
+        const max = this._getMaxMagnitude();
+        const absValue = Math.min(Math.abs(this.currentValue), max);
+        let lower = absValue;
+        let upper = absValue;
+        let fraction = 0;
+
+        if (this.allowIntermediate) {
+            const step = this.step;
+            const stepIndex = Math.floor((absValue + step * 1e-9) / step);
+            lower = Math.min(stepIndex * step, max);
+            upper = Math.min(lower + step, max);
+            if (upper > lower) {
+                fraction = clamp((absValue - lower) / (upper - lower), 0, 1);
+                if (fraction < 1e-6) fraction = 0;
+            }
+        }
+
+        return {
+            fraction,
+            lowerDigits: this._formatDigits(lower),
+            upperDigits: this._formatDigits(upper),
+        };
+    }
+
+    _getSignChar() {
+        if (this.signMode === 'none') return null;
+        if (this.currentValue < 0) return '-';
+        return this.signMode === 'always' ? '+' : '';
+    }
+
+    _getValueText() {
+        const sign = this._getSignChar() || '';
+        return `${sign}${Math.abs(this.currentValue).toFixed(this.decimalPlaces)}`;
+    }
+
+    _buildDisplay() {
+        this._renderLabel();
+        const oldDisplay = this.wrapperDiv.querySelector('.drum-display-container');
+        if (oldDisplay) oldDisplay.remove();
+
+        const state = this._getDisplayState();
+        const total = this._getTotalDigits();
+        const merged = this._getMergedDigits();
+        const splitIndex = Math.max(0, total - merged);
+        const groups = [];
+        for (let index = 0; index < splitIndex; index += 1) {
+            groups.push({ start: index, length: 1 });
+        }
+        groups.push({ start: splitIndex, length: merged });
+
+        const container = document.createElement('div');
+        container.className = 'drum-display-container';
+        const frame = document.createElement('div');
+        frame.className = 'drum-display-frame';
+        frame.setAttribute('role', 'img');
+        frame.setAttribute(
+            'aria-label',
+            `${this.labelText ? this.labelText + ': ' : ''}${this._getValueText()}`
+        );
+
+        const signChar = this._getSignChar();
+        if (signChar !== null) {
+            frame.appendChild(this._createSignCell(signChar));
+        }
+
+        const decimalIndex = this.decimalPlaces > 0 ? this.integerDigits : -1;
+        let dotPlaced = false;
+        groups.forEach((group, groupIndex) => {
+            const groupEnd = group.start + group.length;
+            if (!dotPlaced && decimalIndex >= 0 && decimalIndex <= group.start) {
+                frame.appendChild(this._createDot());
+                dotPlaced = true;
+            }
+
+            const lowerLabel = state.lowerDigits.slice(group.start, groupEnd);
+            const upperLabel = state.upperDigits.slice(group.start, groupEnd);
+            const isLast = groupIndex === groups.length - 1;
+            const split = isLast && state.fraction > 1e-6 && upperLabel !== lowerLabel;
+            let dotOffset = null;
+            if (!dotPlaced && decimalIndex > group.start && decimalIndex < groupEnd) {
+                dotOffset = decimalIndex - group.start;
+                dotPlaced = true;
+            }
+
+            frame.appendChild(this._createDigitCell(
+                lowerLabel,
+                split ? upperLabel : null,
+                group.length,
+                split ? state.fraction : 0,
+                dotOffset
+            ));
+
+            if (!dotPlaced && decimalIndex >= 0 && decimalIndex === groupEnd) {
+                frame.appendChild(this._createDot());
+                dotPlaced = true;
+            }
+        });
+
+        container.appendChild(frame);
+        this.wrapperDiv.appendChild(container);
+    }
+
+    _createDigitCell(lowerLabel, upperLabel, length, fraction, dotOffset) {
+        const cell = document.createElement('div');
+        cell.className = 'drum-cell';
+        cell.style.width = `${length * this.digitWidth}px`;
+        cell.style.height = `${this.digitHeight}px`;
+
+        const windowEl = document.createElement('div');
+        windowEl.className = 'drum-window';
+        const reel = document.createElement('div');
+        reel.className = 'drum-reel';
+        if (upperLabel) {
+            reel.style.height = `${this.digitHeight * 2}px`;
+            reel.style.transform = `translateY(${-fraction * this.digitHeight}px)`;
+            reel.appendChild(this._createFace(lowerLabel));
+            reel.appendChild(this._createFace(upperLabel));
+        } else {
+            reel.style.height = `${this.digitHeight}px`;
+            reel.appendChild(this._createFace(lowerLabel));
+        }
+        windowEl.appendChild(reel);
+        cell.appendChild(windowEl);
+
+        if (dotOffset !== null && dotOffset !== undefined) {
+            const dot = this._createDot();
+            dot.classList.add('drum-dot-inline');
+            dot.style.left = `${dotOffset * this.digitWidth}px`;
+            cell.appendChild(dot);
+        }
+        return cell;
+    }
+
+    _createFace(label) {
+        const face = document.createElement('div');
+        face.className = 'drum-face';
+        face.style.height = `${this.digitHeight}px`;
+        face.style.fontSize = `${Math.round(this.digitHeight * 0.7)}px`;
+        for (const character of label) {
+            const char = document.createElement('span');
+            char.className = 'drum-char';
+            char.style.width = `${this.digitWidth}px`;
+            char.textContent = character;
+            face.appendChild(char);
+        }
+        return face;
+    }
+
+    _createSignCell(signChar) {
+        const cellWidth = Math.max(12, Math.round(this.digitWidth * 0.72));
+        const cell = document.createElement('div');
+        cell.className = 'drum-cell drum-sign-cell';
+        cell.style.width = `${cellWidth}px`;
+        cell.style.height = `${this.digitHeight}px`;
+
+        const windowEl = document.createElement('div');
+        windowEl.className = 'drum-window';
+        const face = document.createElement('div');
+        face.className = 'drum-face';
+        face.style.height = `${this.digitHeight}px`;
+        face.style.fontSize = `${Math.round(this.digitHeight * 0.7)}px`;
+        if (signChar) {
+            const char = document.createElement('span');
+            char.className = 'drum-char';
+            char.style.width = `${cellWidth}px`;
+            char.textContent = signChar;
+            face.appendChild(char);
+        }
+        windowEl.appendChild(face);
+        cell.appendChild(windowEl);
+        return cell;
+    }
+
+    _createDot() {
+        const dot = document.createElement('span');
+        dot.className = 'drum-dot';
+        return dot;
+    }
+
+    setValue(value) {
+        this.currentValue = this._normalizeValue(value);
+        this._buildDisplay();
+        return this;
+    }
+
+    getValue() {
+        return this.currentValue;
+    }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            value: this.currentValue,
+            integerDigits: this.integerDigits,
+            decimalPlaces: this.decimalPlaces,
+            signMode: this.signMode,
+            step: this.step,
+            allowIntermediate: this.allowIntermediate,
+            digitHeight: this.digitHeight,
+            digitWidth: this.digitWidth,
+        };
+    }
+
+    updateLights(upperLight, lowerLight) {}
+}
+
 // ==================== 全局 updateDisplay 函数 ====================
 export const updateDisplay = function(params) {
     if (!params || !params.cmpName) {
@@ -2926,6 +3221,7 @@ export const updateDisplay = function(params) {
 // ==================== 组件工厂 ====================
 const COMPONENT_CLASS_MAP = {
     Display,
+    DrumDisplay,
     ButtonSimple,
     ButtonWithLights,
     IndicatorLight,
