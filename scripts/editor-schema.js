@@ -270,6 +270,38 @@ export const COMPONENT_TYPES = {
         ]),
     },
 
+    TrimWheel: {
+        label: '配平轮',
+        shortLabel: '配平轮',
+        group: 'wheels',
+        prefix: 'trim',
+        icon: '◉',
+        defaultGrid: { colSpan: 3, rowSpan: 3 },
+        defaults: {
+            minValue: -5,
+            maxValue: 5,
+            initialValue: 0,
+            valuePerRevolution: 2,
+            diameter: 86,
+            valueDisplayPrecision: 1,
+            showValue: true,
+            label: 'PITCH TRIM',
+            labelPosition: 'top',
+            labelOrientation: 'horizontal',
+        },
+        fields: withLabelFields([
+            NUMBER('minValue', '最小值', { step: 0.1 }),
+            NUMBER('maxValue', '最大值', { step: 0.1 }),
+            NUMBER('initialValue', '初始值', { step: 0.1 }),
+            NUMBER('valuePerRevolution', '每圈变化量', { min: 0.1, step: 0.1 }),
+            NUMBER('diameter', '直径 (px)', { min: 40, max: 200, step: 1, integer: true }),
+            NUMBER('valueDisplayPrecision', '数值小数位', {
+                min: 0, max: 4, step: 1, integer: true,
+            }),
+            { key: 'showValue', label: '显示数值', type: 'boolean' },
+        ]),
+    },
+
     Lever: {
         label: '离散拨杆',
         shortLabel: '拨杆',
@@ -350,6 +382,7 @@ export const COMPONENT_GROUPS = [
     { id: 'buttons', label: '按钮', types: ['ButtonSimple', 'ButtonWithLights'] },
     { id: 'lights', label: '指示灯', types: ['IndicatorLight', 'IndicatorLightGroup'] },
     { id: 'knobs', label: '旋钮', types: ['KnobDiscrete', 'KnobContinuous', 'KnobInfinite'] },
+    { id: 'wheels', label: '轮盘', types: ['TrimWheel'] },
     { id: 'levers', label: '拨杆', types: ['Lever', 'LeverContinuous'] },
     { id: 'displays', label: '显示屏', types: ['Display'] },
 ];

@@ -66,6 +66,7 @@ type ComponentType =
   | 'KnobDiscrete'
   | 'KnobContinuous'
   | 'KnobInfinite'
+  | 'TrimWheel'
   | 'Lever'
   | 'LeverContinuous'
   | 'Display';
@@ -283,13 +284,14 @@ button.on('guardchange', ({ cmpName, open }) => {
 | `KnobDiscrete` | 离散旋钮 | `2 × 2` |
 | `KnobContinuous` | 连续旋钮 | `2 × 2` |
 | `KnobInfinite` | 无限旋钮 | `2 × 2` |
+| `TrimWheel` | 配平轮 | `3 × 3` |
 | `Lever` | 离散拨杆 | `1 × 3` |
 | `LeverContinuous` | 连续拨杆 | `4 × 1` |
 | `Display` | 显示屏 | `3 × 3` |
 
 > `默认网格` 是编辑器从组件库拖入组件时使用的初始跨度。JSON 中的 `grid` 字段才是最终布局依据。`Display` 的默认跨度还会根据 `width`、`height` 和当前面板的 `cellSize`、`gap` 自动换算。
 
-> 所有非 `Display` 组件都使用统一的 3D 立体外观（按钮、指示灯、旋钮、拨杆等）。该外观只影响渲染，不会向项目 JSON 写入额外字段。
+> 所有非 `Display` 组件都使用统一的 3D 立体外观（按钮、指示灯、旋钮、拨杆、配平轮等）。该外观只影响渲染，不会向项目 JSON 写入额外字段。
 
 ---
 
@@ -727,6 +729,65 @@ group.getBrightnesses();  // 整个灯组亮度数组
 
 ---
 
+### 6.11 TrimWheel — 配平轮
+
+`TrimWheel` 是一个俯视视角的可旋转配平轮，适合用于俯仰配平等连续调节场景。轮盘默认占 `3 × 3` 网格，支持拖动、鼠标滚轮和方向键调节。
+
+```json
+{
+  "id": "trim-wheel",
+  "type": "TrimWheel",
+  "grid": { "row": 1, "col": 1, "rowSpan": 3, "colSpan": 3 },
+  "props": {
+    "minValue": -5,
+    "maxValue": 5,
+    "initialValue": 0,
+    "valuePerRevolution": 2,
+    "diameter": 86,
+    "valueDisplayPrecision": 1,
+    "showValue": true,
+    "label": "PITCH TRIM",
+    "labelPosition": "top",
+    "labelOrientation": "horizontal"
+  }
+}
+```
+
+| 属性 | 类型 | 默认值 | 取值范围 | 说明 |
+| --- | --- | --- | --- | --- |
+| `minValue` | number | `-5` | — | 最小值，到达后停止。 |
+| `maxValue` | number | `5` | — | 最大值，到达后停止。 |
+| `initialValue` | number | `0` | `minValue ~ maxValue` | 初始值。 |
+| `valuePerRevolution` | number | `2` | `> 0` | 轮盘旋转一圈对应的值变化量。 |
+| `diameter` | number | `86` | `40 ~ 200` | 轮盘直径，单位 px。 |
+| `valueDisplayPrecision` | number | `1` | `0 ~ 4` | 当前值显示的小数位数。 |
+| `showValue` | boolean | `true` | — | 是否在轮盘上方显示当前值。 |
+| `label` | string | `"PITCH TRIM"` | — | 外部标签。 |
+| `labelPosition` | string | `"top"` | — | 标签位置。 |
+| `labelOrientation` | string | `"horizontal"` | — | 标签方向。 |
+
+交互说明：
+
+- 围绕轮盘中心拖动旋转，顺时针增大，逆时针减小。
+- 鼠标滚轮向上增大，向下减小。
+- 聚焦轮盘后，方向键可按一个显示单位微调；`Shift + 方向键` 加速 10 倍，`Home` / `End` 跳到最小 / 最大值。
+- 值变化时触发 `change` 事件，数据包含 `cmpName`、`value`。
+- 运行时可通过 `getValue()` / `setValue()` 读取或设置数值。
+
+```js
+const wheel = getComponentByName('trim-wheel');
+
+wheel.on('change', ({ value }) => {
+  console.log('PITCH TRIM:', value.toFixed(1));
+});
+
+wheel.setValue(1.5);
+```
+
+`TrimWheel` 暂不支持盖板。
+
+---
+
 ## 7. 完整示例
 
 ```json
@@ -926,7 +987,7 @@ group.getBrightnesses();  // 整个灯组亮度数组
 14. 检测到组件重叠时产生警告，但不会自动调整已有布局。
 15. `version` 会被规范化为当前版本 `1`。
 16. `name` 为空时会回退为 `"未命名项目"`。
-17. 布尔属性接受 `true`、`"true"`、`1`、`"1"`，其他值视为 `false`；缺少 `guard` 时按 `false` 处理，兼容旧项目。
+17. 布尔属性（如 `guard`、`showValue`）接受 `true`、`"true"`、`1`、`"1"`，其他值视为 `false`；缺少 `guard` 时按 `false` 处理，缺少 `showValue` 时按其默认值 `true` 处理，兼容旧项目。
 
 对于 `IndicatorLightGroup`，`texts` 和 `brightness` 会按 `rows × columns` 使用：缺少的项按空文本 / `0` 亮度处理，多余的项会被忽略。
 

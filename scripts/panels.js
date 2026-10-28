@@ -2611,6 +2611,269 @@ export class KnobInfinite extends BaseComponent {
     }
 }
 
+// ==================== 配平轮 ====================
+export class TrimWheel extends BaseComponent {
+    constructor(cmpName, options = {}) {
+        super(cmpName, options);
+        const {
+            minValue = -5,
+            maxValue = 5,
+            initialValue = 0,
+            valuePerRevolution = 2,
+            diameter = 86,
+            label = '',
+            labelPosition = 'top',
+            labelOrientation = 'horizontal',
+            valueDisplayPrecision = 1,
+            showValue = true,
+        } = options;
+
+        const min = Number(minValue);
+        const max = Number(maxValue);
+        this.minValue = Number.isFinite(min) ? min : -5;
+        this.maxValue = Number.isFinite(max) && max > this.minValue
+            ? max
+            : this.minValue + 1;
+        const initial = Number(initialValue);
+        this.currentValue = clamp(
+            Number.isFinite(initial) ? initial : 0,
+            this.minValue,
+            this.maxValue
+        );
+        const perRevolution = Number(valuePerRevolution);
+        this.valuePerRevolution = Number.isFinite(perRevolution) && perRevolution > 0
+            ? perRevolution
+            : 2;
+        const wheelDiameter = Number(diameter);
+        this.diameter = Number.isFinite(wheelDiameter)
+            ? clamp(wheelDiameter, 40, 200)
+            : 86;
+        this.labelText = label;
+        this.labelPosition = normalizeLabelPosition(labelPosition);
+        this.labelOrientation = normalizeLabelOrientation(labelOrientation);
+        const precision = Math.round(Number(valueDisplayPrecision));
+        this.valueDisplayPrecision = Number.isFinite(precision)
+            ? clamp(precision, 0, 4)
+            : 1;
+        this.showValue = showValue !== false;
+        this.keyboardStep = 10 ** -this.valueDisplayPrecision;
+        this._isDragging = false;
+        this._dragStartValue = 0;
+        this._dragAccumAngle = 0;
+
+        this._buildWheel();
+        this._updateWheelRotation();
+    }
+
+    _formatValue() {
+        return this.currentValue.toFixed(this.valueDisplayPrecision);
+    }
+
+    _buildWheel() {
+        this._renderLabel();
+
+        const oldWheel = this.wrapperDiv.querySelector('.trim-wheel-container');
+        if (oldWheel) oldWheel.remove();
+
+        const extraHeight = this.showValue ? 46 : 20;
+        const containerSize = this.diameter + extraHeight;
+        const wheelOffset = (containerSize - this.diameter) / 2;
+
+        this.wheelContainer = document.createElement('div');
+        this.wheelContainer.className = 'trim-wheel-container';
+        this.wheelContainer.style.width = `${containerSize}px`;
+        this.wheelContainer.style.height = `${containerSize}px`;
+        this.wheelContainer.tabIndex = 0;
+        this.wheelContainer.setAttribute('role', 'slider');
+        this.wheelContainer.setAttribute('aria-valuemin', String(this.minValue));
+        this.wheelContainer.setAttribute('aria-valuemax', String(this.maxValue));
+        this.wheelContainer.setAttribute('aria-label', this.labelText || this.cmpName);
+
+        this.valueDisplay = document.createElement('span');
+        this.valueDisplay.className = 'trim-wheel-value';
+        this.valueDisplay.style.display = this.showValue ? 'block' : 'none';
+        this.valueDisplay.textContent = this._formatValue();
+        this.wheelContainer.appendChild(this.valueDisplay);
+
+        this.wheelEl = document.createElement('div');
+        this.wheelEl.className = 'trim-wheel';
+        this.wheelEl.style.width = `${this.diameter}px`;
+        this.wheelEl.style.height = `${this.diameter}px`;
+        this.wheelEl.style.left = `${wheelOffset}px`;
+        this.wheelEl.style.top = `${wheelOffset}px`;
+
+        this.wheelBezel = document.createElement('div');
+        this.wheelBezel.className = 'trim-wheel-bezel';
+
+        this.wheelRotor = document.createElement('div');
+        this.wheelRotor.className = 'trim-wheel-rotor';
+
+        this.wheelMarker = document.createElement('span');
+        this.wheelMarker.className = 'trim-wheel-marker';
+
+        this.wheelHub = document.createElement('div');
+        this.wheelHub.className = 'trim-wheel-hub';
+
+        this.wheelIndex = document.createElement('span');
+        this.wheelIndex.className = 'trim-wheel-index';
+
+        this.wheelRotor.appendChild(this.wheelMarker);
+        this.wheelRotor.appendChild(this.wheelHub);
+        this.wheelEl.appendChild(this.wheelBezel);
+        this.wheelEl.appendChild(this.wheelRotor);
+        this.wheelEl.appendChild(this.wheelIndex);
+        this.wheelContainer.appendChild(this.wheelEl);
+        this.wrapperDiv.appendChild(this.wheelContainer);
+
+        this._bindWheelEvents();
+        this._syncAria();
+    }
+
+    _syncAria() {
+        if (!this.wheelContainer) return;
+        const displayedValue = Number(this.currentValue.toFixed(this.valueDisplayPrecision));
+        this.wheelContainer.setAttribute('aria-valuenow', String(displayedValue));
+        this.wheelContainer.setAttribute('aria-valuetext', this._formatValue());
+        if (this.labelText) {
+            this.wheelContainer.setAttribute('aria-label', this.labelText);
+        }
+    }
+
+    _updateWheelRotation() {
+        const angle = (this.currentValue / this.valuePerRevolution) * 360;
+        if (this.wheelRotor) {
+            this.wheelRotor.style.transform = `rotate(${angle}deg)`;
+        }
+        if (this.valueDisplay) {
+            this.valueDisplay.textContent = this._formatValue();
+        }
+        this._syncAria();
+    }
+
+    _setWheelValue(value) {
+        const next = clamp(Number(value), this.minValue, this.maxValue);
+        if (!Number.isFinite(next) ||
+            Math.abs(next - this.currentValue) < 1e-7) {
+            return false;
+        }
+        this.currentValue = next;
+        this._updateWheelRotation();
+        this._emit('change', {
+            cmpName: this.cmpName,
+            value: this.currentValue,
+        });
+        return true;
+    }
+
+    _bindWheelEvents() {
+        if (!this.wheelContainer) return;
+
+        const onWheel = (event) => {
+            event.preventDefault();
+            if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+            const direction = event.deltaY > 0 ? -1 : 1;
+            const step = this.keyboardStep * (event.shiftKey ? 5 : 1);
+            this._setWheelValue(this.currentValue + direction * step);
+        };
+        this.wheelContainer.addEventListener('wheel', onWheel, { passive: false });
+
+        const onKeyDown = (event) => {
+            let nextValue = null;
+            const step = this.keyboardStep * (event.shiftKey ? 10 : 1);
+            switch (event.key) {
+                case 'ArrowUp':
+                case 'ArrowRight':
+                    nextValue = this.currentValue + step;
+                    break;
+                case 'ArrowDown':
+                case 'ArrowLeft':
+                    nextValue = this.currentValue - step;
+                    break;
+                case 'Home':
+                    nextValue = this.minValue;
+                    break;
+                case 'End':
+                    nextValue = this.maxValue;
+                    break;
+                default:
+                    return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            this._setWheelValue(nextValue);
+        };
+        this.wheelContainer.addEventListener('keydown', onKeyDown);
+
+        const removeDrag = bindRotaryDrag(this.wheelContainer, {
+            onStart: () => {
+                this._isDragging = true;
+                this._dragStartValue = this.currentValue;
+                this._dragAccumAngle = 0;
+                this.wheelContainer.focus({ preventScroll: true });
+            },
+            onRotate: (deltaDeg) => {
+                const valuePerDegree = this.valuePerRevolution / 360;
+                if (valuePerDegree <= 0) return;
+                const minAccum = (this.minValue - this._dragStartValue) / valuePerDegree;
+                const maxAccum = (this.maxValue - this._dragStartValue) / valuePerDegree;
+                this._dragAccumAngle = clamp(
+                    this._dragAccumAngle + deltaDeg,
+                    minAccum,
+                    maxAccum
+                );
+                this._setWheelValue(
+                    this._dragStartValue + this._dragAccumAngle * valuePerDegree
+                );
+            },
+            onEnd: () => {
+                this._isDragging = false;
+            },
+        });
+
+        this._wheelCleanup = () => {
+            removeDrag();
+            this.wheelContainer.removeEventListener('wheel', onWheel);
+            this.wheelContainer.removeEventListener('keydown', onKeyDown);
+        };
+    }
+
+    setLabel(text) {
+        super.setLabel(text);
+        if (this.wheelContainer) {
+            this.wheelContainer.setAttribute('aria-label', text || this.cmpName);
+        }
+        return this;
+    }
+
+    getValue() {
+        return this.currentValue;
+    }
+
+    getOptions() {
+        return {
+            ...super.getOptions(),
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            initialValue: this.currentValue,
+            valuePerRevolution: this.valuePerRevolution,
+            diameter: this.diameter,
+            valueDisplayPrecision: this.valueDisplayPrecision,
+            showValue: this.showValue,
+        };
+    }
+
+    setValue(value) {
+        this._setWheelValue(value);
+    }
+
+    updateLights(upperLight, lowerLight) {}
+
+    destroy() {
+        if (this._wheelCleanup) this._wheelCleanup();
+        super.destroy();
+    }
+}
+
 // ==================== 全局 updateDisplay 函数 ====================
 export const updateDisplay = function(params) {
     if (!params || !params.cmpName) {
@@ -2653,6 +2916,7 @@ const COMPONENT_CLASS_MAP = {
     KnobDiscrete,
     KnobContinuous,
     KnobInfinite,
+    TrimWheel,
     Lever,
     LeverContinuous,
 };
