@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>机械指针式仪表 · Canvas 组件演示</title>
+  <style>
+    :root {
+      --bg: #0e1319;
+      --panel: #161d26;
+      --line: #263140;
+      --text: #dfe7f1;
+      --muted: #8494a7;
+      --accent: #4dd6c1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px 24px 48px;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.6 "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      padding: 12px 14px; margin-bottom: 22px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    }
+    button {
+      background: #22303e; color: var(--text); border: 1px solid #33465a;
+      padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    button:hover { background: #2b3d4f; border-color: var(--accent); }
+    .toolbar span.tip { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 18px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      padding: 16px 14px 14px; display: flex; flex-direction: column; align-items: center;
+    }
+    .card .gauge-box { width: 132px; height: 132px; }   /* 与组件 size:132 一致 */
+    .card h3 { margin: 12px 0 2px; font-size: 14px; font-weight: 600; }
+    .card p { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-align: center; min-height: 32px; }
+    .card input[type=range] { width: 100%; margin: 0; accent-color: var(--accent); }
+    .card .val { font-size: 12px; color: var(--accent); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+    details { margin-top: 30px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+    details summary { cursor: pointer; font-weight: 600; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 13px; }
+    th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+    th { background: #1b2531; color: var(--muted); font-weight: 500; width: 150px; }
+    code { background: #0b1016; padding: 1px 5px; border-radius: 4px; color: var(--accent); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>机械指针式仪表（132 × 132 px）</h1>
+  <div class="sub">
+    由 <code>../scripts/dial-gauge.js</code> 提供的 <code>DialGauge</code> 组件绘制：量程、分度值、起止角度、警示段、表盘文字、数值窗口均为配置项。
+  </div>
+
+  <div class="toolbar">
+    <button id="btn-random">随机赋值（全部）</button>
+    <button id="btn-half">半格卡位（滚轮卡在一半）</button>
+    <button id="btn-toggle-anim">动画：开</button>
+    <button id="btn-change-seg">改警示段（机油压力表）</button>
+    <button id="btn-change-label">改表盘文字（车速表）</button>
+    <button id="btn-toggle-window">显示/隐藏数值窗口（水温表）</button>
+    <span class="tip">拖动下方滑块可实时改变指针指向</span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <details open>
+    <summary>配置项速查</summary>
+    <table>
+      <tr><th>min / max</th><td>刻度的取值范围</td></tr>
+      <tr><th>majorStep / minorStep</th><td>大刻度（标注数字）/ 小刻度的分度值</td></tr>
+      <tr><th>startAngle / endAngle</th><td>刻度从表盘的哪个角度开始到哪个角度结束（度，12 点方向为 0°，顺时针为正）</td></tr>
+      <tr><th>segments</th><td>警示段数组 <code>[{from,to,color,width}]</code>，内部自动排序并裁剪，保证不相交</td></tr>
+      <tr><th>label / subLabel</th><td>靠上方的表盘文字（位于指针图层下方），subLabel 为其副文字</td></tr>
+      <tr><th>showValueWindow</th><td>是否在靠下方绘制机械滚轮式数值窗口（可选，只显示数字、不带单位）</td></tr>
+      <tr><th>valueWindow</th><td>滚轮样式：<code>decimals</code> 小数位、<code>padZeros</code> 补零、<code>digitWidth/gap</code> 轮宽与缝隙、<code>drumTop/drumMid/drumBottom</code> 鼓面渐变、<code>shadeTop/shadeBottom</code> 圆柱暗部</td></tr>
+      <tr><th>setValue(v)</th><td>对象创建后动态修改指针指向与滚轮读数；传入非整分度的值（如 175.5）时最低位滚轮会卡在一半</td></tr>
+    </table>
+  </details>
+
+  <!-- 目录关系：本文件位于 html/，脚本位于 scripts/ -->
+  <script src="../scripts/dial-gauge.js"></script>
+  <script>
+    // ---------------- 演示实例配置 ----------------
+    var presets = [
+      {
+        name: '车速表',
+        desc: '0–240 km/h，大刻度 40 / 小刻度 10，−120°→120°；窗口为机械滚轮，绿色/黄色/红色警示段',
+        cfg: {
+          min: 0, max: 240, majorStep: 40, minorStep: 10,
+          startAngle: -120, endAngle: 120, value: 0,
+          label: 'SPEED', subLabel: 'km/h',
+          segments: [
+            { from: 0,   to: 120, color: '#3ddc97' },
+            { from: 120, to: 200, color: '#ffc53d' },
+            { from: 200, to: 240, color: '#ff4d4f' }
+          ]
+        }
+      },
+      {
+        name: '水温表',
+        desc: '40–120 ℃，大刻度 20 / 小刻度 5，−135°→135°，100 ℃ 以上红色警示',
+        cfg: {
+          min: 40, max: 120, majorStep: 20, minorStep: 5,
+          startAngle: -135, endAngle: 135, value: 90,
+          label: '水温', subLabel: 'COOLANT',
+          segments: [
+            { from: 40,  to: 100, color: '#4a9bff' },
+            { from: 100, to: 120, color: '#ff4d4f' }
+          ]
+        }
+      },
+      {
+        name: '机油压力表',
+        desc: '0–10 bar，大刻度 2 / 小刻度 0.5，小数位 1；初值 4.55 让末位滚轮卡在一半',
+        cfg: {
+          min: 0, max: 10, majorStep: 2, minorStep: 0.5,
+          startAngle: -135, endAngle: 135, value: 4.55,
+          label: 'OIL', subLabel: 'PRESSURE',
+          segments: [
+            { from: 0, to: 1.5, color: '#ff4d4f' },
+            { from: 1.5, to: 8, color: '#3ddc97' },
+            { from: 8, to: 10, color: '#ff4d4f' }
+          ],
+          valueWindow: { color: '#ffd666' }
+        }
+      },
+      {
+        name: '电压表',
+        desc: '20–30 V，大刻度 2 / 小刻度 0.5，−150°→150°，欠压/过压警示',
+        cfg: {
+          min: 20, max: 30, majorStep: 2, minorStep: 0.5,
+          startAngle: -150, endAngle: 150, value: 24.0,
+          label: 'VOLT', subLabel: 'DC 24V',
+          segments: [
+            { from: 20, to: 21.5, color: '#ff4d4f' },
+            { from: 21.5, to: 28, color: '#3ddc97' },
+            { from: 28, to: 30, color: '#ff4d4f' }
+          ]
+        }
+      },
+      {
+        name: '转速表',
+        desc: '0–8000 rpm，刻度数字按 numberScale 缩成 0–8，副文字标注 ×1000',
+        cfg: {
+          min: 0, max: 8000, majorStep: 1000, minorStep: 200,
+          startAngle: -130, endAngle: 130, value: 1200,
+          numberScale: 0.001, numberDecimals: 0,
+          label: 'TACHO', subLabel: '×1000 r/min',
+          segments: [
+            { from: 0,    to: 6000, color: '#8b98a8' },
+            { from: 6000, to: 8000, color: '#ff4d4f' }
+          ],
+          pointer: { color: '#ffffff' }
+        }
+      },
+      {
+        name: '湿度表（无数值窗口）',
+        desc: '0–100 %RH，−135°→135°，showValueWindow: false',
+        cfg: {
+          min: 0, max: 100, majorStep: 20, minorStep: 5,
+          startAngle: -135, endAngle: 135, value: 62,
+          label: '湿度', subLabel: '%RH',
+          showValueWindow: false,
+          segments: [
+            { from: 0,  to: 30, color: '#ffc53d' },
+            { from: 30, to: 70, color: '#3ddc97' },
+            { from: 70, to: 100, color: '#4a9bff' }
+          ]
+        }
+      }
+    ];
+
+    // ---------------- 渲染演示卡片 ----------------
+    var grid = document.getElementById('grid');
+    var gauges = [];
+
+    presets.forEach(function (p, i) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML =
+        '<div class="gauge-box"></div>' +
+        '<h3>' + p.name + '</h3>' +
+        '<p>' + p.desc + '</p>' +
+        '<input type="range" min="' + p.cfg.min + '" max="' + p.cfg.max +
+          '" step="' + (p.cfg.minorStep || 1) / 2 + '" value="' + p.cfg.value + '">' +
+        '<div class="val"></div>';
+      grid.appendChild(card);
+
+      var g = new DialGauge(card.querySelector('.gauge-box'), p.cfg);
+      var slider = card.querySelector('input[type=range]');
+      var val = card.querySelector('.val');
+      val.textContent = p.cfg.value;
+
+      slider.addEventListener('input', function () {
+        g.setValue(parseFloat(slider.value), { animate: false });
+        val.textContent = slider.value;
+      });
+
+      gauges.push({ gauge: g, slider: slider, val: val, preset: p });
+    });
+
+    // ---------------- 工具栏交互 ----------------
+    var animOn = true;
+    function digitsOf(p) {
+      if (p.decimals != null) return p.decimals;
+      var s = String(p.minorStep);
+      return s.indexOf('.') < 0 ? 0 : s.length - s.indexOf('.') - 1;
+    }
+    document.getElementById('btn-random').onclick = function () {
+      gauges.forEach(function (item) {
+        var p = item.preset.cfg;
+        var v = p.min + Math.random() * (p.max - p.min);
+        item.gauge.setValue(v, { animate: animOn });
+        item.slider.value = v;
+        item.val.textContent = v.toFixed(digitsOf(p));
+      });
+    };
+
+    // 半格卡位：给每个表设一个「.5 分度」的值，滚轮最低位正好卡在两个数字中间
+    document.getElementById('btn-half').onclick = function () {
+      gauges.forEach(function (item) {
+        var p = item.preset.cfg;
+        var step = p.minorStep || 1;
+        var v = Math.floor(p.min / step + 3.5) * step + step / 2;   // 落在半格上
+        v = Math.min(v, p.max);
+        item.gauge.setValue(v, { animate: animOn });
+        item.slider.value = v;
+        item.val.textContent = v.toFixed(digitsOf(p) + 1);
+      });
+    };
+
+    document.getElementById('btn-toggle-anim').onclick = function () {
+      animOn = !animOn;
+      this.textContent = '动画：' + (animOn ? '开' : '关');
+    };
+
+    var segFlag = false;
+    document.getElementById('btn-change-seg').onclick = function () {
+      var g = gauges[2].gauge;                 // 机油压力表
+      segFlag = !segFlag;
+      g.setSegments(segFlag
+        ? [{ from: 0, to: 3, color: '#ff4d4f' }, { from: 3, to: 6, color: '#ffc53d' }, { from: 6, to: 10, color: '#3ddc97' }]
+        : presets[2].cfg.segments);
+    };
+
+    var labelFlag = false;
+    document.getElementById('btn-change-label').onclick = function () {
+      var g = gauges[0].gauge;                 // 车速表
+      labelFlag = !labelFlag;
+      g.setLabel(labelFlag ? { text: '巡航', subText: 'CRUISE' } : { text: 'SPEED', subText: 'km/h' });
+    };
+
+    var winFlag = true;
+    document.getElementById('btn-toggle-window').onclick = function () {
+      winFlag = !winFlag;
+      gauges[1].gauge.setValueWindow(winFlag); // 水温表
+    };
+  </script>
+</body>
+</html>

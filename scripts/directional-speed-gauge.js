@@ -13,17 +13,22 @@
  *            故速度方向不变而盘面转动时，箭头的屏幕指向随之改变（始终指向盘面上对应的那个刻度）
  *   4. 速度数字：画在箭头反向延长线的 1/2 半径处，颜色与箭头一致，数字本身不旋转
  *   5. 青色速度刻度（0 / 5 / 10 / 30）：与箭头同方向，数字本身不旋转
- *   6. 限速指示：红色圆（半径用同一映射），可不存在；存在时在画布左下角标出限速值
+ *   6. 罗盘游标：可设定盘外角度的空心三角游标，坐在圆外侧；bug = null 时不显示
+ *   7. 限速指示：红色圆（半径用同一映射），可不存在；存在时在画布左下角标出限速值
+ *   8. 速度设定指示：与速度同样的画法但用虚线（空心箭头），数字标在画布左上角；
+ *      setSpeed = null 时箭头与数字都不显示；方向由 setDirection 独立指定（可与当前速度方向不同），
+ *      setDirection 缺省时沿用速度矢量的方向
+ *   9. 右下角：罗盘指示与速度方向的夹角；方向未知时不显示，改显示黄色带框 DIR
  *
  * 故障：
  *   速度信息不存在   → 不画箭头 / 速度刻度 / 速度数字，圆内显示黄色带框 SPD
  *   限速信息故障     → 原限速值位置显示黄色带框 LIM
  *   速度方向信息故障 → 推定速度方向 = 外圈角度指示（见 directionFaultEstimate），
- *                      并在画布右下角显示黄色带框 DIR
+ *                      右下角不显示夹角，改为黄色带框 DIR
  *
  * 用法：
  *   var g = new DirectionalSpeedGauge(canvasEl, { pixelRatio: 2, ringRotation: 0 });
- *   g.render({ speed: 12, direction: 40, limit: 25 });
+ *   g.render({ speed: 12, direction: 40, limit: 25, setSpeed: 18, setDirection: 210, bug: 120 });
  *   g.render({ speed: 18, direction: 135, limit: 30, limitFault: true, directionFault: true });
  */
 (function (root, factory) {
@@ -52,8 +57,13 @@
     //   'double' → 推定方向 = 2φ，箭头屏幕角度 = φ（盘面转动时箭头随之偏转）
     directionFaultEstimate: 'ring',
     cornerInset: 14,      // 左下 / 右下角标注距画布左右边界的距离
-    cornerBottom: 12,     // 左下 / 右下角标注距画布底边的距离
+    cornerBottom: 12,     // 下排标注距画布底边的距离
+    cornerTop: 12,        // 上排标注距画布顶边的距离
     screenBorder: null,   // 方形“屏幕区域”的描边颜色（null = 不描边，仅填黑底）
+    bugSize: 5.5,         // 罗盘游标（三角形）边长
+    setDash: [3, 2.5],    // 速度设定指示的虚线样式
+    relativeSigned: false,// 右下角夹角：false = 0~180 的夹角；true = ±180 带符号
+    dirFlagWhenSpeedFault: true, // 速度不存在导致方向未知时，右下角是否也显示 DIR
     markSpeeds: [0, 5, 10, 30],
     background: '#0A0E13',
     fontFamily: '"Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
@@ -61,7 +71,10 @@
       ring: '#FFFFFF',    // 外圈圆、刻度、数字、顶部三角形
       arrow: '#00FFFF',   // 箭头、速度数字、速度刻度（青色）
       limit: '#FF3B30',   // 限速圆与限速值（红色）
-      warning: '#FFD400'  // 故障标志（黄色）
+      warning: '#FFD400', // 故障标志（黄色）
+      bug: '#FFFFFF',     // 罗盘游标
+      set: null,          // 速度设定指示（null = 与箭头同色）
+      relative: '#FFFFFF' // 右下角夹角
     }
   };
 
@@ -169,8 +182,10 @@
     ctx.lineJoin = 'round';
 
     this._drawRing(ctx, cx, cy);
+    this._drawBug(ctx, cx, cy, state);
     this._drawIndexTriangle(ctx, cx, cy);
     this._drawLimit(ctx, cx, cy, state);
+    this._drawSetSpeed(ctx, cx, cy, state);
     this._drawVector(ctx, cx, cy, state);
     this._drawFaults(ctx, cx, cy, state);
 
@@ -250,6 +265,101 @@
     this._text(ctx, String(Math.round(lim)), p.x, p.y, { color: C.limit, size: 9, weight: 'bold' });
   };
 
+  /**
+   * 解析速度矢量所用的“盘外方向”：正常取 state.direction；
+   * 方向故障时以“外圈角度指示”(φ) 推定 —— 'ring' 模式推定 = φ（屏幕正上方），
+   * 'double' 模式推定 = 2φ（屏幕偏转 φ）。
+   */
+  DirectionalSpeedGauge.prototype._resolveDirection = function (state) {
+    var o = this.options;
+    if (flagOf(state, 'directionFault', 'directionValid')) {
+      var ring = this.getOuterRingAngle();
+      return (o.directionFaultEstimate === 'double') ? norm360(ring * 2) : ring;
+    }
+    return norm360(state.direction);
+  };
+
+  /** 罗盘指示（φ）与速度方向的夹角：false → 0~180；true → ±180 带符号 */
+  DirectionalSpeedGauge.prototype.getRelativeAngle = function (state) {
+    var diff = norm360(norm360(state.direction) - this.getOuterRingAngle() + 180) - 180;
+    return this.options.relativeSigned ? diff : Math.abs(diff);
+  };
+
+  /** 7. 罗盘游标：可设定盘外角度的空心三角，坐在圆外侧；bug = null 时不显示 */
+  DirectionalSpeedGauge.prototype._drawBug = function (ctx, cx, cy, state) {
+    var b = state.bug;
+    if (b == null || !isFinite(b)) return;
+
+    var o = this.options;
+    var side = o.bugSize;
+    var h = side * Math.sqrt(3) / 2;
+    var a = this.directionToScreen(b) * DEG;
+    var ux = Math.sin(a), uy = -Math.cos(a);          // 指向盘外的单位向量
+    var px = Math.cos(a), py = Math.sin(a);           // 切向
+    var rApex = o.radius + 1;                          // 顶点朝向圆心，略离外圈圆
+    var rBase = rApex + h;
+
+    ctx.strokeStyle = o.colors.bug || o.colors.ring;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + rApex * ux, cy + rApex * uy);
+    ctx.lineTo(cx + rBase * ux + px * side / 2, cy + rBase * uy + py * side / 2);
+    ctx.lineTo(cx + rBase * ux - px * side / 2, cy + rBase * uy - py * side / 2);
+    ctx.closePath();
+    ctx.stroke();
+  };
+
+  /** 8. 速度设定指示：与速度同画法但用虚线，数字标在左上角；setSpeed = null 时全不显示 */
+  DirectionalSpeedGauge.prototype._drawSetSpeed = function (ctx, cx, cy, state) {
+    var set = state.setSpeed;
+    if (set == null || !isFinite(set)) return;
+
+    var o = this.options;
+    var C = o.colors;
+    var col = C.set || C.arrow;
+
+    // 数字：画布左上角（始终显示，只要有设定值）
+    var p = this._corner('left', 'top');
+    this._text(ctx, formatSpeed(set), p.x, p.y, { color: col, size: 9, weight: 'bold' });
+
+    // 箭头方向：有独立的 setDirection 就用它（可与当前速度方向不同）；
+    // 否则沿用速度矢量的方向，此时速度不存在则方向也无从确定，不绘制箭头
+    var setDir;
+    if (state.setDirection != null && isFinite(state.setDirection)) {
+      if (flagOf(state, 'setDirectionFault', 'setDirectionValid')) return;  // 设定方向未知
+      setDir = norm360(state.setDirection);
+    } else {
+      if (flagOf(state, 'speedFault', 'speedValid')) return;
+      setDir = this._resolveDirection(state);
+    }
+
+    var a = this.directionToScreen(setDir) * DEG;
+    var ux = Math.sin(a), uy = -Math.cos(a);
+    var px = Math.cos(a), py = Math.sin(a);
+    var L = this.speedToRadius(set);
+    if (L < 2) return;
+
+    var headLen = Math.min(6.5, L * 0.9);
+    var halfW = headLen * 0.5;
+    var tipX = cx + L * ux, tipY = cy + L * uy;
+    var backX = tipX - headLen * ux, backY = tipY - headLen * uy;
+
+    ctx.save();
+    ctx.setLineDash(o.setDash || [3, 2.5]);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(backX, backY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(backX + px * halfW, backY + py * halfW);
+    ctx.lineTo(backX - px * halfW, backY - py * halfW);
+    ctx.stroke();
+    ctx.restore();
+  };
+
   /** 3/4/5. 箭头 + 反向延长线上的速度数字 + 青色速度刻度 */
   DirectionalSpeedGauge.prototype._drawVector = function (ctx, cx, cy, state) {
     if (flagOf(state, 'speedFault', 'speedValid')) return;   // SPD 故障：箭头与速度刻度均不显示
@@ -258,15 +368,7 @@
     var R = o.radius;
     var C = o.colors;
 
-    var dir;
-    if (flagOf(state, 'directionFault', 'directionValid')) {
-      // 方向故障：以“外圈角度指示”(φ) 推定。'ring' 模式下推定方向 = φ，
-      // 而 φ 在屏幕上正好就是正上方（顶部三角形处），故箭头直接指向上方。
-      var ring = this.getOuterRingAngle();
-      dir = (o.directionFaultEstimate === 'double') ? norm360(ring * 2) : ring;
-    } else {
-      dir = norm360(state.direction);
-    }
+    var dir = this._resolveDirection(state);
     var speed = Math.max(0, +state.speed || 0);
 
     // direction 是盘外标注的角度 → 屏幕角度需扣除盘面转动量
@@ -336,15 +438,24 @@
 
   /** 故障标志：黄色带框 SPD / LIM / DIR */
   DirectionalSpeedGauge.prototype._drawFaults = function (ctx, cx, cy, state) {
-    if (flagOf(state, 'speedFault', 'speedValid')) {
+    var speedFault = flagOf(state, 'speedFault', 'speedValid');
+    var dirFault = flagOf(state, 'directionFault', 'directionValid');
+
+    if (speedFault) {
       this._flag(ctx, cx, cy, 'SPD');                       // 圆内
     }
     if (flagOf(state, 'limitFault', 'limitValid')) {
       var p = this._corner('left');                         // 画布左下角（原限速值位置）
       this._flag(ctx, p.x, p.y, 'LIM');
     }
-    if (flagOf(state, 'directionFault', 'directionValid')) {
-      var q = this._corner('right');                        // 画布右下角
+
+    // 右下角：方向已知 → 罗盘指示与速度方向的夹角；方向未知 → 故障指示 DIR
+    var q = this._corner('right');
+    if (!speedFault && !dirFault) {
+      var v = Math.round(this.getRelativeAngle(state));
+      this._text(ctx, String(v), q.x, q.y,
+        { color: this.options.colors.relative || this.options.colors.ring, size: 9, weight: 'bold' });
+    } else if (dirFault || (speedFault && this.options.dirFlagWhenSpeedFault)) {
       this._flag(ctx, q.x, q.y, 'DIR');
     }
   };
@@ -352,16 +463,19 @@
   /* ------------------------------ 小工具 ------------------------------ */
 
   /**
-   * 画布左下 / 右下角的标注位置（贴着方形画面的两个下角，远离圆外侧的数字环）
+   * 画布四角的标注位置（贴着方形画面的角，远离圆外侧的数字环）
+   * @param {'left'|'right'} h  水平
+   * @param {'top'|'bottom'} v  垂直，默认 bottom
    */
-  DirectionalSpeedGauge.prototype._corner = function (which) {
+  DirectionalSpeedGauge.prototype._corner = function (h, v) {
     var o = this.options;
     var S = o.size;
     var inset = o.cornerInset == null ? Math.max(10, S * 0.106) : o.cornerInset;
     var bottom = o.cornerBottom == null ? Math.max(9, S * 0.09) : o.cornerBottom;
+    var top = o.cornerTop == null ? bottom : o.cornerTop;
     return {
-      x: (which === 'left') ? inset : S - inset,
-      y: S - bottom
+      x: (h === 'left') ? inset : S - inset,
+      y: (v === 'top') ? top : S - bottom
     };
   };
 

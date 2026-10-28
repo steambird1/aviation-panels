@@ -109,6 +109,21 @@
       <span class="val" id="lmV">25</span>
     </div>
     <div class="row">
+      <label>速度设定</label>
+      <input id="ss" type="range" min="0" max="30" step="1" value="22">
+      <span class="val" id="ssV">22</span>
+    </div>
+    <div class="row">
+      <label>设定方向</label>
+      <input id="sd" type="range" min="0" max="359" step="1" value="210">
+      <span class="val" id="sdV">210°</span>
+    </div>
+    <div class="row">
+      <label>罗盘游标</label>
+      <input id="bg" type="range" min="0" max="359" step="1" value="110">
+      <span class="val" id="bgV">110°</span>
+    </div>
+    <div class="row">
       <label>盘面转动</label>
       <input id="rt" type="range" min="0" max="359" step="1" value="0">
       <span class="val" id="rtV">0°</span>
@@ -118,6 +133,10 @@
       <label><input id="fLim" type="checkbox"> LIM 故障（限速故障）</label>
       <label><input id="fDir" type="checkbox"> DIR 故障（方向故障）</label>
       <label><input id="noLim" type="checkbox"> 无限速指示</label>
+      <label><input id="noSet" type="checkbox"> 无速度设定</label>
+      <label><input id="noBug" type="checkbox"> 不显示游标</label>
+      <label><input id="sdSame" type="checkbox"> 设定方向随速度</label>
+      <label><input id="fSd" type="checkbox"> 设定方向故障</label>
     </div>
     <pre class="state" id="stateOut"></pre>
     <div class="row">
@@ -128,7 +147,7 @@
       </select>
       <span class="val"></span>
     </div>
-    <div class="note"><code>direction</code> 对应盘外标注的角度，屏幕角度 = <code>direction − 盘面转动</code>：拖动「盘面转动」时，速度方向数值不变，箭头会跟着盘面转。<br>勾选 DIR 故障后，推定方向取<b>外圈角度指示</b>（顶部三角形所指的盘外角度），它落在屏幕正上方，故箭头直接指向上方。</div>
+    <div class="note"><code>direction</code> 对应盘外标注的角度，屏幕角度 = <code>direction − 盘面转动</code>：拖动「盘面转动」时，速度方向数值不变，箭头会跟着盘面转。<br>勾选 DIR 故障后，推定方向取<b>外圈角度指示</b>（顶部三角形所指的盘外角度），它落在屏幕正上方，故箭头直接指向上方。<br>右下角：方向已知时显示<b>罗盘指示与速度方向的夹角</b>，方向未知时改显示 DIR。左上角为速度设定值（虚线箭头与速度同方向）。</div>
   </div>
 </div>
 
@@ -146,17 +165,19 @@
 
   /* ---------------- 典型状态 ---------------- */
   var cases = [
-    { t: '正常', d: '12 节 / 40° / 限速 25', s: { speed: 12, direction: 40, limit: 25 } },
-    { t: '低速', d: '4 节 / 300° / 限速 25', s: { speed: 4, direction: 300, limit: 25 } },
-    { t: '接近限速', d: '25 节 / 210° / 限速 25', s: { speed: 25, direction: 210, limit: 25 } },
-    { t: '满刻度', d: '30 节 → 箭头恰好贴到圆边界', s: { speed: 30, direction: 90, limit: 30 } },
-    { t: '无限速', d: '8 节 / 300°，不出现红色圆与限速值', s: { speed: 8, direction: 300, limit: null } },
-    { t: 'SPD 故障', d: '箭头与速度刻度消失，圆内黄色带框 SPD', s: { speed: 0, direction: 40, limit: 25, speedFault: true } },
-    { t: 'LIM 故障', d: '左下角限速值位置显示黄色带框 LIM', s: { speed: 18, direction: 135, limit: 25, limitFault: true } },
-    { t: 'DIR 故障', d: '箭头推定指向外圈角度指示（屏幕正上方），右下角黄色带框 DIR', s: { speed: 15, direction: 200, limit: 25, directionFault: true } },
-    { t: '多重故障', d: 'SPD + LIM + DIR 同时出现', s: { speed: 0, direction: 0, limit: 25, speedFault: true, limitFault: true, directionFault: true } },
-    { t: '盘面转动 120°', d: '方向 250° 不变，屏幕角度 = 250−120 = 130°', s: { speed: 20, direction: 250, limit: 18 }, o: { ringRotation: 120 } },
-    { t: '盘面 120° + DIR 故障', d: '推定方向 = 外圈角度指示 120° → 屏幕 0°（箭头朝上）', s: { speed: 20, direction: 250, limit: 18, directionFault: true }, o: { ringRotation: 120 } }
+    { t: '正常', d: '12 节 / 40°，设定 22 节 / 210°（与速度不同向）', s: { speed: 12, direction: 40, limit: 25, setSpeed: 22, setDirection: 210, bug: 110 } },
+    { t: '低速', d: '4 节 / 300°，设定 12 节 / 300°', s: { speed: 4, direction: 300, limit: 25, setSpeed: 12, setDirection: 300, bug: 300 } },
+    { t: '接近限速', d: '25 节 / 210°，设定 28 节 / 90°', s: { speed: 25, direction: 210, limit: 25, setSpeed: 28, setDirection: 90, bug: 210 } },
+    { t: '满刻度', d: '30 节 → 箭头恰好贴到圆边界', s: { speed: 30, direction: 90, limit: 30, setSpeed: 30, setDirection: 270, bug: 90 } },
+    { t: '设定方向随速度', d: '不给 setDirection 时沿用速度方向', s: { speed: 8, direction: 300, limit: null, setSpeed: 20, setDirection: null, bug: 60 } },
+    { t: '无设定 / 无游标', d: 'setSpeed、bug 为 null 时均不显示', s: { speed: 8, direction: 300, limit: null, setSpeed: null, bug: null } },
+    { t: '无限速', d: '8 节 / 300°，不出现红色圆与限速值', s: { speed: 8, direction: 300, limit: null, setSpeed: 20, setDirection: 60, bug: 60 } },
+    { t: 'SPD 故障', d: '箭头与速度刻度消失，圆内 SPD；设定方向独立已知，虚线箭头仍显示', s: { speed: 0, direction: 40, limit: 25, setSpeed: 22, setDirection: 210, bug: 110, speedFault: true } },
+    { t: 'LIM 故障', d: '左下角限速值位置显示黄色带框 LIM', s: { speed: 18, direction: 135, limit: 25, setSpeed: 22, setDirection: 210, bug: 110, limitFault: true } },
+    { t: 'DIR 故障', d: '箭头朝上，右下角不显夹角而显示 DIR；设定方向不受影响', s: { speed: 15, direction: 200, limit: 25, setSpeed: 22, setDirection: 210, bug: 110, directionFault: true } },
+    { t: '多重故障', d: 'SPD + LIM + DIR 同时出现', s: { speed: 0, direction: 0, limit: 25, setSpeed: 22, setDirection: 210, bug: 110, speedFault: true, limitFault: true, directionFault: true } },
+    { t: '盘面转动 120°', d: '速度 250°→屏幕 130°，设定 210°→屏幕 90°，各自独立', s: { speed: 20, direction: 250, limit: 18, setSpeed: 26, setDirection: 210, bug: 300 }, o: { ringRotation: 120 } },
+    { t: '盘面 120° + DIR 故障', d: '速度推定朝上，设定方向仍是 210°→屏幕 90°', s: { speed: 20, direction: 250, limit: 18, setSpeed: 26, setDirection: 210, bug: 300, directionFault: true }, o: { ringRotation: 120 } }
   ];
 
   var wrap = document.getElementById('cases');
@@ -179,13 +200,19 @@
 
   var el = function (id) { return document.getElementById(id); };
   var ui = { sp: el('sp'), dr: el('dr'), lm: el('lm'), rt: el('rt'), dfm: el('dfm'),
-             fSpd: el('fSpd'), fLim: el('fLim'), fDir: el('fDir'), noLim: el('noLim') };
+             ss: el('ss'), sd: el('sd'), bg: el('bg'),
+             fSpd: el('fSpd'), fLim: el('fLim'), fDir: el('fDir'), fSd: el('fSd'),
+             noLim: el('noLim'), noSet: el('noSet'), noBug: el('noBug'), sdSame: el('sdSame') };
 
   function current() {
     return {
       speed: parseFloat(ui.sp.value),
       direction: parseInt(ui.dr.value, 10),
       limit: ui.noLim.checked ? null : parseInt(ui.lm.value, 10),
+      setSpeed: ui.noSet.checked ? null : parseInt(ui.ss.value, 10),
+      setDirection: ui.sdSame.checked ? null : parseInt(ui.sd.value, 10),
+      setDirectionFault: ui.fSd.checked,
+      bug: ui.noBug.checked ? null : parseInt(ui.bg.value, 10),
       speedFault: ui.fSpd.checked,
       limitFault: ui.fLim.checked,
       directionFault: ui.fDir.checked
@@ -198,6 +225,9 @@
     el('drV').textContent = st.direction + '°';
     el('lmV').textContent = st.limit == null ? '—' : st.limit;
     el('rtV').textContent = ui.rt.value + '°';
+    el('ssV').textContent = st.setSpeed == null ? '—' : st.setSpeed;
+    el('sdV').textContent = ui.sdSame.checked ? '随速度' : st.setDirection + '°';
+    el('bgV').textContent = st.bug == null ? '—' : st.bug + '°';
 
     var rot = parseInt(ui.rt.value, 10);
     gauge.setOptions({ ringRotation: rot, directionFaultEstimate: ui.dfm.value }).render(st);
@@ -205,10 +235,15 @@
     var shown = st.directionFault
       ? gauge.directionToScreen(ui.dfm.value === 'double' ? rot * 2 : rot)
       : gauge.directionToScreen(st.direction);
+    var rel = (!st.speedFault && !st.directionFault) ? Math.round(gauge.getRelativeAngle(st)) : null;
+    var setShown = (st.setSpeed == null || st.setDirectionFault) ? null
+      : gauge.directionToScreen(st.setDirection == null ? (st.directionFault ? (ui.dfm.value === 'double' ? rot * 2 : rot) : st.direction) : st.setDirection);
     el('stateOut').textContent =
       'gauge.render(' + JSON.stringify(st) + ', { ringRotation: ' + rot +
       ', directionFaultEstimate: "' + ui.dfm.value + '" })\n' +
-      '箭头屏幕角度 = ' + shown.toFixed(0) + '°（0° = 正上方，顺时针）';
+      '速度箭头屏幕角度 = ' + shown.toFixed(0) + '°（0° = 正上方，顺时针）\n' +
+      '设定箭头屏幕角度 = ' + (setShown == null ? '不显示' : setShown.toFixed(0) + '°') + '\n' +
+      '右下角显示 = ' + (rel == null ? 'DIR（方向未知）' : '夹角 ' + rel + '°');
   }
 
   Object.keys(ui).forEach(function (k) {
@@ -228,14 +263,20 @@
     a1.render({
       speed: 16 + 13 * Math.sin(t * 0.55),
       direction: (t * 34) % 360,
-      limit: 22
+      limit: 22,
+      setSpeed: 20,
+      setDirection: (t * -19 + 90) % 360,   // 设定方向独立变化
+      bug: (t * 22) % 360
     });
 
     // 速度方向固定 200°，盘面持续转动 → 箭头屏幕指向随之改变
     a2.setOptions({ ringRotation: (t * 26) % 360 }).render({
       speed: 12 + 8 * Math.sin(t * 0.9),
       direction: 200,
-      limit: 18
+      limit: 18,
+      setSpeed: 24,
+      setDirection: 210,                     // 与速度方向不同
+      bug: 200
     });
 
     // 方向故障：推定方向 = 外圈角度指示，箭头恒指向正上方
@@ -243,6 +284,9 @@
       speed: 14 + 6 * Math.sin(t * 0.7),
       direction: 200,
       limit: 18,
+      setSpeed: 24,
+      setDirection: 210,                     // 设定方向不受速度故障影响
+      bug: 200,
       directionFault: true
     });
 
