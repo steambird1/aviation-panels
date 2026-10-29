@@ -270,6 +270,35 @@
   }
 
   /* ---------------------------------------------------------------------------
+   * 包络（“另一个地形数据”）
+   * ------------------------------------------------------------------------ */
+  /**
+   * 包络与 terrain 接口完全一致（{elevation} 或 {sample}），但语义不同：
+   * 它表示该点之上的“安全下限”（如最低安全高度网格），因此恒 >= 真实地形高度。
+   *
+   * 本函数逐点取 max(包络, 地形)，从算法层面强制保证该不变量——
+   * 即便调用方给出的包络值低于地形，也不会画到地形下面去。
+   *
+   * @param {Array<{distNm,elevFt}>} envSamples  包络采样（sampleTerrainTrack 的结果）
+   * @param {Array<{distNm,elevFt}>}|null terrainSamples 真实地形采样
+   * @returns {Array<{distNm,elevFt,rawFt}>} rawFt 为原始包络值（未抬升）
+   */
+  function envelopeProfile(envSamples, terrainSamples) {
+    var out = [];
+    if (!envSamples) return out;
+    for (var i = 0; i < envSamples.length; i++) {
+      var e = envSamples[i];
+      var t = terrainSamples ? terrainSamples[i] : null;
+      var raw = e.elevFt, v = raw;
+      if (t && isNum(t.elevFt)) {
+        v = isNum(v) ? Math.max(v, t.elevFt) : t.elevFt;
+      }
+      out.push({ distNm: e.distNm, elevFt: v, rawFt: raw });
+    }
+    return out;
+  }
+
+  /* ---------------------------------------------------------------------------
    * 地形威胁等级（按接近率 / 余度）
    * ------------------------------------------------------------------------ */
   var DEFAULT_THREAT = {
@@ -354,6 +383,7 @@
     targetProfile: targetProfile,
 
     sampleTerrainTrack: sampleTerrainTrack,
+    envelopeProfile: envelopeProfile,
     terrainLevelAt: terrainLevelAt,
     terrainProfileWithThreat: terrainProfileWithThreat
   };

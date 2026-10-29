@@ -12,9 +12,16 @@
 (function () {
   'use strict';
 
-  var W = 253, H = 253;
+  /* 画布尺寸 / 预留区高度 / UI 缩放由页面通过 window.ND_DEMO_CFG 指定：
+       { W: 884, H: 524, extraHeight: 135, uiScale: 1.8 }
+     未指定时回退到最初的 253 x 253（VNAV 110px，uiScale 1）。 */
+  var CFG = (typeof window !== 'undefined' && window.ND_DEMO_CFG) || {};
+  var W = CFG.W || 253, H = CFG.H || 253;
+  var EXTRA_H = CFG.extraHeight || 110;
+  var UI_SCALE = CFG.uiScale || 1;
+
   var canvas = document.getElementById('nd');
-  var nd = new ND.NavDisplay(canvas, {});
+  var nd = new ND.NavDisplay(canvas, { uiScale: UI_SCALE });
 
   /* ---------------------------------------------------------------------------
    * 0. 脚本新鲜度自检
@@ -22,7 +29,7 @@
    *    会被继续复用（缺 updateLayout / extraRenderer），届时会抛 TypeError。
    *    这里提前检测并给出明确提示。
    * ------------------------------------------------------------------------ */
-  var REQUIRED_ND_VERSION = '1.6.0';
+  var REQUIRED_ND_VERSION = '2.0.0';
   (function checkFresh() {
     var bad = [];
     if (!ND.VERSION) bad.push('navdisplay.js');
@@ -92,7 +99,10 @@
     { x: 30, y: 6, r: 7.0, elev: 2800, seed: 4.2 },
     { x: 2, y: 20, r: 8.0, elev: 3100, seed: 5.5 }
   ];
-  var TERRAIN_MAX_FT = 5000;      // 用于把高程换算成雷达等级
+  /* 包络：“另一个地形数据”。接口与地形完全一致，但含义是该点之上的安全下限，
+     因此恒 >= 真实地形高度：env = max(地形 + 余度, 下限)。 */
+  var ENV_CLEARANCE_FT = 500;     // 包络高出地形的余度
+  var ENV_FLOOR_FT = 1600;        // 包络的绝对下限（无地形数据处取该值；取值不同于默认 MDA 便于区分）
 
   function levelOf(v) {
     if (v < 0.10) return 0;
@@ -175,22 +185,48 @@
     targetStages: 2,         // 目标轨迹的阶段数（1..3）
     mdaOn: true,             // false -> mdaFt 传 null
     mdaFt: 1200,
+    envelopeOn: true,        // false -> envelope 传 null
+    envClearanceFt: 500,     // 包络高出地形的余度（ft）
     vnavWaypoints: true      // “把航路点显示在上面”开关
   };
 
   var radarBuf = new Uint8Array(W * H);      // 逐像素雷达数据：0..5
   var terrainElev = new Float32Array(W * H); // 逐像素地形高程（英尺），与地形雷达同一栅格
+  var terrainEnv = new Float32Array(W * H);  // 逐像素包络高程（英尺），恒 >= terrainElev
   var radarMaxLevel = 0;
   // 雷达输入对象保持不变，各字段在 updateRadarBuffer() 内随布局更新
   var radar = {
     mode: 'wxr', data: radarBuf,
     terrain: { lines: [], elevation: terrainElev }
   };
-  // VNAV 输入对象同样保持不变（复用地形雷达的高程栅格）
-  var vnav = { show: true, terrain: { elevation: terrainElev }, waypoints: [] };
+  // VNAV 输入对象同样保持不变（复用雷达栅格；envelope 与 terrain 接口一致）
+  // envelope 对象单独持有：开关只切换“是否挂载”，不能把引用本身置空，
+  // 否则关闭一次后再打开就再也回不来了。
+  /* VNAV 的地形/包络：
+     雷达图象用的是屏幕栅格（terrainElev / terrainEnv），量程受画布限制；
+     VNAV 剖面的横轴往往比“正前方可见距离”更长，因此这里改用同一地形场的
+     世界坐标采样函数（sample），保证剖面全程都有数据。
+     两者同源——都来自 TERR_CELLS + fieldElevFt，只是取样方式不同。 */
+  var vnavTerrain = {
+    sample: function (x, y) { return fieldElevFt(TERR_CELLS, x, y); }
+  };
+  var vnavEnvelope = {
+    sample: function (x, y) {
+      return Math.max(fieldElevFt(TERR_CELLS, x, y) + state.envClearanceFt, ENV_FLOOR_FT);
+    }
+  };
+  var vnav = {
+    show: true,
+    terrain: vnavTerrain,
+    envelope: vnavEnvelope,
+    waypoints: []
+  };
 
   /* VNavPanel：绘制在“其它导航信息区域” */
-  var vnavPanel = new VNavPanel({ fontFamily: '"Courier New", Courier, monospace' });
+  var vnavPanel = new VNavPanel({
+    fontFamily: '"Courier New", Courier, monospace',
+    uiScale: UI_SCALE, tickScale: CFG.vnavTickScale || 1
+  });
   nd.setOption('extraRenderer', vnavPanel);   // 预留区 -> 垂直导航剖面
 
   /* ---------------------------------------------------------------------------
@@ -244,6 +280,19 @@
    * 4b. 地形高程栅格（屏幕空间，英尺）—— 与地形雷达图象同源
    *     VNAV 剖面直接复用这份栅格沿航迹采样。
    * ------------------------------------------------------------------------ */
+  /**
+   * 某一行需要计算的像素范围 [x0, x1]；null = 整行跳过。
+   * 裁剪模式为 'rect'（宽画布）时铺满整个导航区，否则只算弧内圆——
+   * 与 navdisplay.js 的地图裁剪保持一致，避免出现“有图象的区域没数据”。
+   */
+  function rowBounds(L, y) {
+    if (L.clip === 'rect') return [0, W - 1];
+    var dy = y - L.acY;
+    if (dy < -L.r || dy > L.r) return null;
+    var half = Math.sqrt(L.r * L.r - dy * dy);
+    return [Math.max(0, Math.ceil(L.cx - half)), Math.min(W - 1, Math.floor(L.cx + half))];
+  }
+
   function updateTerrainElevation() {
     var walk = flatten(ND.buildRoutePath(currentRoute()));
     var p = posAt(walk, state.s);
@@ -251,22 +300,23 @@
     var track = state.heading + state.drift;
     var t = ND.util.rad(track);
     var ct = Math.cos(t), st = Math.sin(t), scale = L.pxPerNm;
-    var cx = L.cx, acY = L.acY, r = L.r;
+    var cx = L.cx, acY = L.acY;
 
-    for (var i = 0, n = W * H; i < n; i++) terrainElev[i] = NaN;
+    for (var i = 0, n = W * H; i < n; i++) { terrainElev[i] = NaN; terrainEnv[i] = ENV_FLOOR_FT; }
 
     for (var y = 0; y < H; y++) {
-      var dy = y - acY;
-      if (dy < -r || dy > r) continue;
-      var half = Math.sqrt(r * r - dy * dy);
-      var x0 = Math.max(0, Math.ceil(cx - half));
-      var x1 = Math.min(W - 1, Math.floor(cx + half));
+      var b = rowBounds(L, y);
+      if (!b) continue;
+      var x0 = b[0], x1 = b[1];
       var uy = (acY - y) / scale;
       for (var x = x0; x <= x1; x++) {
         var ux = (x - cx) / scale;
         var ex = ux * ct + uy * st;
         var ny = -ux * st + uy * ct;
-        terrainElev[y * W + x] = fieldElevFt(TERR_CELLS, p.x + ex, p.y + ny);
+        var e = fieldElevFt(TERR_CELLS, p.x + ex, p.y + ny);
+        terrainElev[y * W + x] = e;
+        // 包络：地形 + 余度，且不低于绝对下限 -> 结构上保证 >= 地形
+        terrainEnv[y * W + x] = Math.max(e + state.envClearanceFt, ENV_FLOOR_FT);
       }
     }
   }
@@ -284,17 +334,15 @@
     var track = state.heading + state.drift;
     var t = ND.util.rad(track);
     var ct = Math.cos(t), st = Math.sin(t), scale = L.pxPerNm;
-    var cx = L.cx, acY = L.acY, r = L.r;
+    var cx = L.cx, acY = L.acY;
 
     radarBuf.fill(0);
     radarMaxLevel = 0;
 
     for (var y = 0; y < H; y++) {
-      var dy = y - acY;
-      if (dy < -r || dy > r) continue;                 // 弧外的像素不计算
-      var half = Math.sqrt(r * r - dy * dy);
-      var x0 = Math.max(0, Math.ceil(cx - half));
-      var x1 = Math.min(W - 1, Math.floor(cx + half));
+      var b = rowBounds(L, y);
+      if (!b) continue;                                // 裁剪区外的像素不计算
+      var x0 = b[0], x1 = b[1];
       var uy = (acY - y) / scale;                      // 屏幕上分量(NM)
       for (var x = x0; x <= x1; x++) {
         var ux = (x - cx) / scale;                     // 屏幕右分量(NM)
@@ -338,7 +386,7 @@
       showNames: state.showNames,
       radar: radar,
       vnav: buildVnav(routePts, p),
-      extraInfo: { show: state.extraInfo, height: 110, side: 'bottom' }
+      extraInfo: { show: state.extraInfo, height: EXTRA_H, side: 'bottom' }
     };
   }
 
@@ -375,6 +423,7 @@
     vnav.groundSpeedMs = state.gsMs;
     vnav.target = target;                                   // null -> 不显示
     vnav.mdaFt = state.mdaOn ? state.mdaFt : null;          // null -> 不显示
+    vnav.envelope = state.envelopeOn ? vnavEnvelope : null;   // null -> 不显示
     vnav.waypoints = wps;
     vnav.showWaypoints = state.vnavWaypoints;
     return vnav;
@@ -450,6 +499,8 @@
   });
   bindCheck('chkTarget', 'targetOn');
   bindCheck('chkMda', 'mdaOn');
+  bindCheck('chkEnvelope', 'envelopeOn');
+  bindRange('rngEnvClear', 'envClearanceFt', function (v) { return v + ' ft'; });
   bindCheck('chkVnavWpt', 'vnavWaypoints');
 
   $('selMajorDiv').addEventListener('change', function () {
@@ -511,17 +562,30 @@
   $('rngTurn').value = state.turnRadius;
   $('selMajorDiv').value = String(state.majorDivFt);
   $('selTargetStages').value = String(state.targetStages);
-  ['rngAlt', 'rngVs', 'rngAcc', 'rngGs', 'rngMda', 'rngTargetAlt', 'rngTargetRate'].forEach(function (id) {
+  ['rngAlt', 'rngVs', 'rngAcc', 'rngGs', 'rngMda', 'rngTargetAlt', 'rngTargetRate', 'rngEnvClear'].forEach(function (id) {
     $(id).value = String(state[{
       rngAlt: 'altFt', rngVs: 'vsMs', rngAcc: 'accMs2', rngGs: 'gsMs',
-      rngMda: 'mdaFt', rngTargetAlt: 'targetAltFt', rngTargetRate: 'targetRateFpm'
+      rngMda: 'mdaFt', rngTargetAlt: 'targetAltFt', rngTargetRate: 'targetRateFpm',
+      rngEnvClear: 'envClearanceFt'
     }[id]]);
   });
   ['rngHdg', 'rngDrift', 'rngWindDir', 'rngWindSpd', 'rngTurn',
-   'rngAlt', 'rngVs', 'rngAcc', 'rngGs', 'rngMda', 'rngTargetAlt', 'rngTargetRate'].forEach(function (id) {
+   'rngAlt', 'rngVs', 'rngAcc', 'rngGs', 'rngMda', 'rngTargetAlt', 'rngTargetRate',
+   'rngEnvClear'].forEach(function (id) {
     var ev = document.createEvent('Event');
     ev.initEvent('input', true, true);
     $(id).dispatchEvent(ev);
+  });
+
+  /* 让 HTML 里的 checked 成为权威：启动时同步所有复选框的状态。
+     （此前只同步了滑块/下拉，复选框的 checked 属性在启动阶段被忽略） */
+  ['chkHdgFault', 'chkMapFault', 'chkRadials', 'chkNames', 'chkExtra',
+   'chkTarget', 'chkMda', 'chkEnvelope', 'chkVnavWpt'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    var ev = document.createEvent('Event');
+    ev.initEvent('change', true, true);
+    el.dispatchEvent(ev);
   });
 
   /* ---------------------------------------------------------------------------

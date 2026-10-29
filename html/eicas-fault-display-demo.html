@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EICAS 故障信息显示 · 演示</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #141821;
+    --line: #262c39;
+    --text: #d7dce7;
+    --muted: #7d879c;
+    --lv1: #ff3b30;
+    --lv2: #ffc300;
+    --lv3: #ffc300;
+    --lv4: #ffffff;
+    --lv5: #3ddc84;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 48px;
+    background: radial-gradient(1200px 600px at 50% -10%, #171c27 0%, var(--bg) 60%);
+    color: var(--text);
+    font: 14px/1.6 "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .5px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+  .grid { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel h2 {
+    font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 12px; font-weight: 600;
+  }
+  /* 屏幕区 */
+  .screen { flex: 0 0 auto; }
+  .bezel {
+    background: #000;
+    border: 1px solid #39414f;
+    border-radius: 6px;
+    padding: 10px;
+    box-shadow: inset 0 0 24px rgba(0,0,0,.9), 0 6px 20px rgba(0,0,0,.5);
+    min-height: 273px;
+  }
+  canvas { display: block; image-rendering: -webkit-optimize-contrast; }
+  .readout {
+    margin-top: 12px; display: flex; gap: 14px; flex-wrap: wrap;
+    font: 12px/1.4 "SF Mono", Menlo, Consolas, monospace; color: var(--muted);
+  }
+  .readout b { color: var(--text); font-weight: 600; }
+  /* 控制区 */
+  .controls { flex: 1 1 380px; min-width: 320px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  button {
+    background: #1d2331; color: var(--text);
+    border: 1px solid #333c4d; border-radius: 6px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  button:hover { background: #262f40; border-color: #4a5670; }
+  button:active { transform: translateY(1px); }
+  button.warn { color: var(--lv2); border-color: #55491a; }
+  button.warn:hover { background: #2a2a1c; }
+  button.danger { color: var(--lv1); border-color: #54241f; }
+  button.danger:hover { background: #2c1a19; }
+  button.ghost { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; margin: 2px 0 14px; }
+  .fontrow { align-items: center; }
+  .fontrow label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+  }
+  .fontrow select {
+    background: #1d2331; color: var(--text); border: 1px solid #333c4d;
+    border-radius: 6px; padding: 6px 8px; font-size: 12px; cursor: pointer;
+  }
+  /* 图例 */
+  .legend { margin-top: 18px; }
+  .legend ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .legend li { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .swatch {
+    width: 74px; text-align: center; border-radius: 4px; padding: 1px 0;
+    background: #000; font: 11px/1.5 "Courier New", Courier, monospace;
+  }
+  .code {
+    font: 12px/1.5 "SF Mono", Menlo, Consolas, monospace;
+    color: var(--muted); background: #0e121a; border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 12px; margin-top: 10px; overflow-x: auto;
+  }
+  kbd {
+    background: #222939; border: 1px solid #3a4256; border-radius: 4px;
+    padding: 1px 5px; font: 11px/1.5 monospace;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>EICAS 故障信息显示（207 × 253）</h1>
+  <div class="sub">左栏 147px / 右栏 60px · 五级警告 · 多页翻页 · CANCEL / RECALL</div>
+
+  <div class="grid">
+    <section class="panel screen">
+      <h2>Display</h2>
+      <div class="bezel"><canvas id="eicas-screen"></canvas></div>
+      <div class="readout">
+        <span>页码 <b id="ro-page">1/1</b></span>
+        <span>条目 <b id="ro-count">0</b></span>
+        <span>状态 <b id="ro-state">正常</b></span>
+      </div>
+    </section>
+
+    <section class="panel controls">
+      <h2>Controls</h2>
+      <div class="row">
+        <button id="btn-sample">载入示例故障</button>
+        <button id="btn-next" class="ghost">逐条添加</button>
+        <button id="btn-warning" class="danger">添加 1 级警告</button>
+        <button id="btn-random" class="ghost">随机条目</button>
+      </div>
+      <div class="row">
+        <button id="btn-cancel" class="warn">CANCEL</button>
+        <button id="btn-recall" class="warn">RECALL</button>
+        <button id="btn-remove" class="ghost">移除最后一条</button>
+        <button id="btn-clear" class="ghost">全部清除</button>
+      </div>
+      <div class="row fontrow">
+        <label>字体
+          <select id="sel-font">
+            <option value='"Courier New", Courier, monospace'>Courier New（默认）</option>
+            <option value='"Menlo", Consolas, "DejaVu Sans Mono", monospace'>Menlo / Consolas</option>
+            <option value='"Helvetica Neue", Helvetica, Arial, sans-serif'>Helvetica / Arial</option>
+            <option value='"PingFang SC", "Microsoft YaHei", sans-serif'>苹方 / 微软雅黑</option>
+            <option value='monospace'>系统等宽 monospace</option>
+          </select>
+        </label>
+        <label>字号
+          <select id="sel-size">
+            <option value="10">10</option>
+            <option value="11" selected>11（默认）</option>
+            <option value="12">12</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button data-zoom="1">1×</button>
+        <button data-zoom="2">2×</button>
+        <button data-zoom="3">3×</button>
+      </div>
+      <p class="hint">
+        快捷键：<b>C</b> = CANCEL（清除当前页并翻页，末页则清空显示），<b>R</b> = RECALL（恢复并回到第一页）。<br>
+        默认字体为 <b>Courier New</b> 11px；行高、"·" 标识宽度会随字号自动调整，超出栏宽的文字自动截断为省略号
+        （右栏仅 60px，等宽 12px 已是上限，再大会开始截断）。
+      </p>
+      <div class="code">
+var eicas = new EICASFaultDisplay('eicas-screen');<br>
+var h = eicas.add(2, 'ELEC GEN 2');      // 2 级：黄色 + "·"<br>
+eicas.add(3, 'BUS TIE 2 OPEN', h);       // 子条目：缩进显示<br>
+eicas.add(1, 'FIRE ENG R');              // 1 级：红色，常显置顶<br>
+eicas.add(4, 'OIL', null, 'right');      // 右栏（窄栏用短标签）<br>
+eicas.remove(h);                         // 连同子条目一起移除<br>
+eicas.setFont('Helvetica, Arial', 12);   // 换字体（默认 Courier New 11px）
+      </div>
+    </section>
+  </div>
+
+  <section class="panel legend">
+    <h2>Message levels</h2>
+    <ul>
+      <li><span class="swatch" style="color:#ff3b30">L ENG FAIL</span> 级别 1 · 红色，锁定在顶部，任何页都显示且不会被 CANCEL 清除</li>
+      <li><span class="swatch" style="color:#ffc300">· HYD PRESS</span> 级别 2 · 黄色，左侧带 “·” 标识</li>
+      <li><span class="swatch" style="color:#ffc300">FLT CTRL</span> 级别 3 · 黄色，无标识</li>
+      <li><span class="swatch" style="color:#ffffff">FUEL PUMP</span> 级别 4 · 白色</li>
+      <li><span class="swatch" style="color:#3ddc84">APU RUN</span> 级别 5 · 绿色</li>
+    </ul>
+    <div class="code">
+条目按「级别升序 + 先来后到」排序；高级别条目下的低级别子条目缩进显示，且与父条目同页。
+超过一屏时在下方显示 <b>当前页/总页数</b>；清空显示后再添加的新条目会自动显示出来。
+    </div>
+  </section>
+</div>
+
+<script src="../scripts/eicas-fault-display.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------- 示例数据：左栏（主信息区） ---------------- */
+  var LEFT_SAMPLE = [
+    { level: 1, text: 'FIRE ENG R', children: [
+      { level: 3, text: 'BOTTLE A DISCH' },
+      { level: 4, text: 'FUEL SHUTOFF R' }
+    ]},
+    { level: 2, text: 'R ENG OIL TEMP' },
+    { level: 2, text: 'ELEC GEN 2', children: [
+      { level: 3, text: 'BUS TIE 2 OPEN' },
+      { level: 4, text: 'TRU 2 OFF' },
+      { level: 5, text: 'APU GEN AVAIL' }
+    ]},
+    { level: 2, text: 'HYD PRESS L' },
+    { level: 3, text: 'FLT CTRL MODE' },
+    { level: 3, text: 'ANTI SKID INOP' },
+    { level: 3, text: 'PACK 2 OFF', children: [{ level: 4, text: 'PACK 2 L' }] },
+    { level: 4, text: 'L FWD FUEL PUMP' },
+    { level: 4, text: 'NAV ADIRU INOP' },
+    { level: 4, text: 'WINDOW HEAT L' },
+    { level: 4, text: 'YAW DAMPER L' },
+    { level: 4, text: 'BRAKE TEMP 3' },
+    { level: 4, text: 'CABIN FLOW LOW' },
+    { level: 5, text: 'APU RUNNING' },
+    { level: 5, text: 'PASS OXY ON' },
+    { level: 5, text: 'GEAR DOWN' },
+    { level: 5, text: 'FLAPS 30' },
+    { level: 5, text: 'SPOILERS ARM' },
+    { level: 5, text: 'AUTOBRAKE 3' },
+    { level: 5, text: 'DOOR FWD L' },
+    { level: 5, text: 'APU BLEED OPEN' },
+    { level: 5, text: 'ENG ANTI ICE L' },
+    { level: 5, text: 'WING ANTI ICE L' },
+    { level: 5, text: 'FUEL XFEED OPEN' },
+    { level: 5, text: 'PACK 1 AUTO' },
+    { level: 5, text: 'ISOL VALVE OPEN' },
+    { level: 5, text: 'CAB ALT AUTO' },
+    { level: 5, text: 'SPEEDBRAKE ARM' }
+  ];
+
+  /* ---------------- 示例数据：右栏（次要/状态区，仅 60px 宽） ---------------- */
+  // 右栏只有 60px 宽，等宽字体下每字符 6.6px，可用约 45px —— 文案控制在 6 字符内
+  var RIGHT_SAMPLE = [
+    { level: 2, text: 'FUEL', children: [{ level: 4, text: '12.4' }] },
+    { level: 2, text: 'OIL', children: [{ level: 4, text: '18.1' }] },
+    { level: 3, text: 'PACK 2' },
+    { level: 4, text: 'DOORS' },
+    { level: 4, text: 'BRAKE' },
+    { level: 4, text: 'TAT 12' },
+    { level: 4, text: 'SAT-30' },
+    { level: 4, text: 'GW 142' },
+    { level: 4, text: 'CG 24' },
+    { level: 4, text: 'EGT 64' },
+    { level: 5, text: 'APU' },
+    { level: 5, text: 'GEARS' },
+    { level: 5, text: 'FLAPS' },
+    { level: 5, text: 'STAB 4' },
+    { level: 5, text: 'N1 92' },
+    { level: 5, text: 'N2 88' },
+    { level: 5, text: 'FF 24K' },
+    { level: 5, text: 'RUDDER' },
+    { level: 5, text: 'ELEV L' },
+    { level: 5, text: 'SPLR' },
+    { level: 5, text: 'BLEED' },
+    { level: 5, text: 'IGN L' }
+  ];
+
+  var RANDOM_POOL = [
+    { level: 2, text: 'L ENG OIL TEMP' }, { level: 2, text: 'R HYD QTY' },
+    { level: 3, text: 'MACH TRIM' }, { level: 3, text: 'AUTO SLAT FAIL' },
+    { level: 4, text: 'R WING FUEL PUMP' }, { level: 4, text: 'TCAS FAULT' },
+    { level: 5, text: 'PASS SEATBELT' }, { level: 5, text: 'CARGO DOOR' }
+  ];
+  var RANDOM_POOL_RIGHT = [
+    { level: 2, text: 'HYD' }, { level: 3, text: 'PACK 1' },
+    { level: 4, text: 'WINDOW' }, { level: 5, text: 'A/BRK' }
+  ];
+
+  /* ---------------- 初始化 ---------------- */
+  var readout = {
+    page: document.getElementById('ro-page'),
+    count: document.getElementById('ro-count'),
+    state: document.getElementById('ro-state')
+  };
+
+  var eicas = new EICASFaultDisplay('eicas-screen', { onChange: updateReadout });
+  var handles = [];          // 添加顺序，用于「移除最后一条」
+  var queue = [];            // 「逐条添加」的待添加队列
+
+  function updateReadout(s) {
+    s = s || eicas.getState();
+    readout.page.textContent = s.page + '/' + s.totalPages;
+    readout.count.textContent = s.count;
+    readout.state.textContent = s.count === 0 ? '空白' : (s.cleared ? '已清空（新条目仍会显示）' : '正常');
+  }
+
+  function addTree(item, column) {
+    var h = eicas.add(item.level, item.text, null, column);
+    handles.push(h);
+    (item.children || []).forEach(function (child) {
+      var ch = eicas.add(child.level, child.text, h);
+      handles.push(ch);
+    });
+    return h;
+  }
+
+  function loadSamples() {
+    eicas.clear();
+    handles = [];
+    LEFT_SAMPLE.forEach(function (item) { addTree(item, 'left'); });
+    RIGHT_SAMPLE.forEach(function (item) { addTree(item, 'right'); });
+    queue = [];
+  }
+
+  function addNext() {
+    if (!queue.length) {
+      queue = LEFT_SAMPLE.concat(RIGHT_SAMPLE.map(function (item) {
+        var copy = Object.assign({}, item);
+        copy.column = 'right';
+        return copy;
+      }));
+    }
+    var item = queue.shift();
+    addTree(item, item.column || 'left');
+  }
+
+  /* ---------------- 事件绑定 ---------------- */
+  document.getElementById('btn-sample').addEventListener('click', loadSamples);
+  document.getElementById('btn-next').addEventListener('click', addNext);
+  document.getElementById('btn-warning').addEventListener('click', function () {
+    var pool = ['FIRE ENG L', 'L ENG OIL PRESS', 'CABIN ALTITUDE', 'AUTOPILOT DISC'];
+    handles.push(eicas.add(1, pool[Math.floor(Math.random() * pool.length)]));
+  });
+  document.getElementById('btn-random').addEventListener('click', function () {
+    var useRight = Math.random() < 0.25;
+    var pool = useRight ? RANDOM_POOL_RIGHT : RANDOM_POOL;
+    var item = pool[Math.floor(Math.random() * pool.length)];
+    handles.push(eicas.add(item.level, item.text, null, useRight ? 'right' : 'left'));
+  });
+  document.getElementById('btn-cancel').addEventListener('click', function () { eicas.cancel(); });
+  document.getElementById('btn-recall').addEventListener('click', function () { eicas.recall(); });
+  document.getElementById('btn-remove').addEventListener('click', function () {
+    while (handles.length) {
+      var h = handles.pop();
+      if (eicas.remove(h)) break;   // 子条目可能已随父条目删除
+    }
+  });
+  document.getElementById('btn-clear').addEventListener('click', function () {
+    eicas.clear();
+    handles = [];
+    queue = [];
+  });
+
+  document.getElementById('sel-font').addEventListener('change', function () {
+    eicas.setFont(this.value);
+  });
+  document.getElementById('sel-size').addEventListener('change', function () {
+    eicas.configure({ fontSize: Number(this.value), pageFontSize: Number(this.value) - 1 });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-zoom]'), function (btn) {
+    btn.addEventListener('click', function () {
+      var z = Number(btn.getAttribute('data-zoom'));
+      eicas.setPixelRatio(z);
+      eicas.canvas.style.width = 207 * z + 'px';
+      eicas.canvas.style.height = 253 * z + 'px';
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    var k = e.key.toLowerCase();
+    if (k === 'c') eicas.cancel();
+    else if (k === 'r') eicas.recall();
+  });
+
+  /* ---------------- 首屏 ---------------- */
+  loadSamples();
+  updateReadout();
+})();
+</script>
+</body>
+</html>

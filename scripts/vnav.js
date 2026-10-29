@@ -30,6 +30,11 @@
 
   var DEFAULTS = {
     fontFamily: '"Courier New", Courier, monospace',
+    // 分辨率无关：字号与固定像素尺寸按该倍率放大（253 画布时为 1，884x524 时约 1.8）
+    uiScale: 1,
+    // 大刻度间距单独缩放：面板高度只从 110 增到 135，若按 uiScale 全幅放大，
+    // 可见高度带（英尺）反而变窄。默认 1（253 时即 22px）。
+    tickScale: 1,
     fontSizeTick: 8,          // 高度带数字
     fontSizeLabel: 8,         // 航路点名称 / MDA / TGT 标注
 
@@ -56,7 +61,8 @@
       white: '#ffffff',
       grey: '#909090',
       magenta: '#ff44ff',      // 目标轨迹
-      cyan: '#22e0e0',         // MDA
+      cyan: '#22e0e0',         // 包络（另一份地形数据）
+      mda: '#ffd400',          // 最低下降高度（黄）
       green: '#30ff30',
       yellow: '#ffd400',
       red: '#ff3c30',
@@ -73,6 +79,12 @@
     return out;
   }
   function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  /** 固定像素尺寸 -> 实际像素 */
+  function sz(o, v) { return v * o.uiScale; }
+  /** 字号 -> CSS font 字符串 */
+  function fontOf(o, px) { return (px * o.uiScale).toFixed(2) + 'px ' + o.fontFamily; }
+  /** 线宽：随 uiScale 放大但夹在 [1, 3.5] */
+  function lwOf(o, v) { return Math.max(1, Math.min(3.5, v * o.uiScale)); }
   function colorOf(colors, name) {
     switch (name) {
       case 'red': return colors.red;
@@ -106,6 +118,10 @@
    *     altFt: 6000, rateFpm: -1800,
    *     stages: [{altFt, rateFpm}, ...]   // 可选，分阶段
    *   },
+   *   envelope: {                // 包络：“另一个地形数据”，接口与 terrain 一致（可为 null）
+   *     elevation: Float32Array(W*H),   // 屏幕空间（ft）
+   *     sample: function(xNM, yNM)      // 或世界坐标采样，返回 ft
+   *   },                         // 恒 >= terrain（内部逐点取 max 强制保证）
    *   mdaFt: 1200,               // 最低下降高度（ft），null -> 不显示
    *   waypoints: [{name, distNm, altFt?}],   // 沿航迹的航路点
    *   showWaypoints: true
@@ -120,10 +136,10 @@
     var gs = isNum(v.groundSpeedMs) && v.groundSpeedMs > 1e-6 ? v.groundSpeedMs : 230;
 
     var x0 = rect.x, y0 = rect.y, rw = rect.w, rh = rect.h;
-    var tapeW = Math.min(o.tapeWidth, Math.floor(rw * 0.4));
+    var tapeW = Math.min(sz(o, o.tapeWidth), Math.floor(rw * 0.4));
     var plotX = x0 + tapeW, plotW = rw - tapeW;
     var cy = y0 + rh / 2;                       // 高度条的一半处 = 当前高度
-    var pxPerFt = o.majorTickPx / majorDiv;
+    var pxPerFt = (o.majorTickPx * o.tickScale) / majorDiv;
     var pxPerNm = (L && L.pxPerNm) ? L.pxPerNm : 1;
     var maxDistNm = plotW / pxPerNm;
 
@@ -138,45 +154,58 @@
 
     // 与上半部分的分隔线
     ctx.strokeStyle = C.grey;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = lwOf(o, 1);
     ctx.beginPath();
     ctx.moveTo(x0, y0 + 0.5);
     ctx.lineTo(x0 + rw, y0 + 0.5);
     ctx.stroke();
 
-    // ---- 地形 ----
-    var prof = null;
-    if (v.terrain && !(input && input.mapFault)) {
-      var samples = NP.sampleTerrainTrack(v.terrain, {
-        L: L, aircraft: (input && input.aircraft) || { x: 0, y: 0 },
-        trackDeg: (input && isNum(input.track)) ? input.track : 0,
-        maxDistNm: maxDistNm, steps: o.terrainSteps,
-        canvasW: (L && L.W) || rect.w, canvasH: (L && L.H) || 253
-      });
-      prof = NP.terrainProfileWithThreat(samples, {
+    // ---- 沿航迹采样（地形 / 包络共用同一组采样点）----
+    var sampleOpt = {
+      L: L, aircraft: (input && input.aircraft) || { x: 0, y: 0 },
+      trackDeg: (input && isNum(input.track)) ? input.track : 0,
+      maxDistNm: maxDistNm, steps: o.terrainSteps,
+      canvasW: (L && L.W) || rect.w, canvasH: (L && L.H) || 253
+    };
+    var samples = null, envRaw = null;
+    if (!(input && input.mapFault)) {
+      if (v.terrain) samples = NP.sampleTerrainTrack(v.terrain, sampleOpt);
+      if (v.envelope) envRaw = NP.sampleTerrainTrack(v.envelope, sampleOpt);
+    }
+
+    // ---- 地形（填充 + 按接近率着色）----
+    if (samples) {
+      var prof = NP.terrainProfileWithThreat(samples, {
         alt0Ft: alt0, vsMs: v.vsMs, accMs2: v.accMs2, gsMs: gs
       }, o.terrainThresholds);
       this._drawTerrain(ctx, prof, plotX, plotW, y0, rh, xOf, yOf);
     }
 
-    // ---- 最低下降高度（青色虚线）----
+    // ---- 包络（青色曲线，画在地形填充之上）----
+    if (envRaw) {
+      // envelopeProfile 逐点取 max，保证包络恒 >= 真实地形
+      this._drawEnvelope(ctx, NP.envelopeProfile(envRaw, samples),
+        plotX, plotW, y0, rh, xOf, yOf);
+    }
+
+    // ---- 最低下降高度（黄色虚线）----
     if (isNum(v.mdaFt)) {
       var ym = yOf(v.mdaFt);
       if (ym > y0 && ym < y0 + rh) {
         ctx.save();
-        ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = C.cyan;
-        ctx.lineWidth = 1;
+        ctx.setLineDash([sz(o, 4), sz(o, 3)]);
+        ctx.strokeStyle = C.mda;
+        ctx.lineWidth = lwOf(o, 1);
         ctx.beginPath();
         ctx.moveTo(plotX, ym);
         ctx.lineTo(x0 + rw, ym);
         ctx.stroke();
         ctx.restore();
         if (o.showMdaLabel) {
-          ctx.font = o.fontSizeLabel + 'px ' + o.fontFamily;
+          ctx.font = fontOf(o, o.fontSizeLabel);
           ctx.textAlign = 'left';
-          ctx.fillStyle = C.cyan;
-          ctx.fillText('MDA', plotX + 2, ym - 6);
+          ctx.fillStyle = C.mda;
+          ctx.fillText('MDA', plotX + sz(o, 2), ym - sz(o, 6));
         }
       }
     }
@@ -187,9 +216,9 @@
       var tp = NP.targetProfile(alt0, stages, gs, maxDistNm, o.profileSteps);
       if (tp) {
         ctx.save();
-        ctx.setLineDash([5, 4]);
+        ctx.setLineDash([sz(o, 5), sz(o, 4)]);
         ctx.strokeStyle = C.magenta;
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = lwOf(o, 1.2);
         ctx.beginPath();
         for (var i = 0; i < tp.length; i++) {
           var px = xOf(tp[i].distNm), py = yOf(tp[i].altFt);
@@ -198,7 +227,7 @@
         ctx.stroke();
         ctx.restore();
         // 每个阶段的目标高度处画一个小横线 + 数值
-        ctx.font = o.fontSizeLabel + 'px ' + o.fontFamily;
+        ctx.font = fontOf(o, o.fontSizeLabel);
         ctx.fillStyle = C.magenta;
         ctx.textAlign = 'right';
         for (var k = 0; k < stages.length; k++) {
@@ -206,13 +235,15 @@
           if (ya <= y0 || ya >= y0 + rh) continue;
           ctx.save();
           ctx.strokeStyle = C.magenta;
-          ctx.lineWidth = 1;
+          ctx.lineWidth = lwOf(o, 1);
           ctx.beginPath();
-          ctx.moveTo(x0 + rw - 6, ya);
+          ctx.moveTo(x0 + rw - sz(o, 6), ya);
           ctx.lineTo(x0 + rw, ya);
           ctx.stroke();
           ctx.restore();
-          if (o.showTargetLabel) ctx.fillText(String(Math.round(stages[k].altFt)), x0 + rw - 7, ya);
+          if (o.showTargetLabel) {
+            ctx.fillText(String(Math.round(stages[k].altFt)), x0 + rw - sz(o, 7), ya);
+          }
         }
       }
     }
@@ -246,32 +277,79 @@
     var fillOf = {
       green: C.terrainGreen, yellow: C.terrainYellow, red: C.terrainRed
     };
-    var lineOf = { green: C.green, yellow: C.yellow, red: C.red };
 
-    // 填充：逐段竖条
+    // 与包络曲线使用同一组采样点，逐点连成折线（而不是逐段阶梯填充）。
+    // 若按“每段竖条取本段采样值”画阶梯，在陡降处阶梯会保持高位、而包络折线已经降下来，
+    // 于是包络曲线会落到地形填充顶边之下（余度小时尤其明显）。
+    var pts = [], i;
+    for (i = 0; i < prof.length; i++) {
+      var p = prof[i];
+      if (!isNum(p.elevFt)) { pts.push(null); continue; }   // 无数据 -> 断开
+      pts.push({ x: xOf(p.distNm), y: yOf(p.elevFt), level: p.level });
+    }
+
+    // 按等级把连续的同色段分组，逐段填充多边形（相邻段共享一条边，避免出现缝隙）
+    var a = 0;
+    while (a < pts.length) {
+      if (!pts[a]) { a++; continue; }
+      var lv = pts[a].level, b = a;
+      while (b + 1 < pts.length && pts[b + 1] && pts[b + 1].level === lv) b++;
+      var end = (b + 1 < pts.length && pts[b + 1]) ? b + 1 : b;   // 多带一点，与下一段共享边
+      this._fillRun(ctx, pts, a, end, bottom, fillOf[lv] || fillOf.green);
+      a = b + 1;
+    }
+
+    // 轮廓线
+    ctx.save();
+    ctx.strokeStyle = C.green;
+    ctx.lineWidth = lwOf(o, 1);
+    var started = false;
+    for (i = 0; i < pts.length; i++) {
+      var q = pts[i];
+      if (!q || q.y > bottom + sz(o, 2) || q.y < y0 - sz(o, 40)) { started = false; continue; }
+      if (!started) { ctx.beginPath(); ctx.moveTo(q.x, q.y); started = true; }
+      else { ctx.lineTo(q.x, q.y); }
+    }
+    if (started) ctx.stroke();
+    ctx.restore();
+  };
+
+  /** 用折线顶边填充一段（顶边与包络曲线同源，保证两者不会相互穿越） */
+  VNavPanel.prototype._fillRun = function (ctx, pts, a, b, bottom, color) {
+    if (b <= a) return;
+    // 左右各外扩 0.5px：相邻等级段之间重叠一条边，避免抗锯齿留出暗色缝隙
+    var x0 = pts[a].x - 0.5, x1 = pts[b].x + 0.5;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x0, pts[a].y);
+    for (var i = a + 1; i <= b; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.lineTo(x1, pts[b].y);
+    ctx.lineTo(x1, bottom);
+    ctx.lineTo(x0, bottom);
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  /* ---------------- 包络曲线（青色，只画线，不填充）---------------- */
+  VNavPanel.prototype._drawEnvelope = function (ctx, prof, plotX, plotW, y0, rh, xOf, yOf) {
+    var o = this.options, C = o.colors;
+    if (!prof || !prof.length) return;
+    var bottom = y0 + rh;
+    ctx.save();
+    ctx.strokeStyle = C.cyan;
+    ctx.lineWidth = lwOf(o, 1.2);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    var started = false;
     for (var i = 0; i < prof.length; i++) {
       var p = prof[i];
-      if (!isNum(p.elevFt)) continue;
-      var x = xOf(p.distNm);
-      var xn = (i + 1 < prof.length) ? xOf(prof[i + 1].distNm) : plotX + plotW;
-      var y = yOf(p.elevFt);
-      if (y >= bottom) continue;
-      var yy = Math.max(y0, y);
-      ctx.fillStyle = fillOf[p.level] || fillOf.green;
-      ctx.fillRect(Math.floor(x), yy, Math.max(1, Math.ceil(xn - x)), bottom - yy);
+      if (!isNum(p.elevFt)) { started = false; continue; }
+      var x = xOf(p.distNm), y = yOf(p.elevFt);
+      if (y > bottom + sz(o, 4) || y < y0 - sz(o, 60)) { started = false; continue; }
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
     }
-    // 轮廓线
-    ctx.lineWidth = 1;
-    var started = false;
-    for (var k = 0; k < prof.length; k++) {
-      var q = prof[k];
-      if (!isNum(q.elevFt)) { started = false; continue; }
-      var px = xOf(q.distNm), py = yOf(q.elevFt);
-      if (py > bottom + 2 || py < y0 - 40) { started = false; continue; }
-      if (!started) { ctx.beginPath(); ctx.moveTo(px, py); started = true; }
-      else { ctx.lineTo(px, py); }
-    }
-    if (started) { ctx.strokeStyle = C.green; ctx.stroke(); }
+    ctx.stroke();
+    ctx.restore();
   };
 
   /* ---------------- 高度趋势线 ---------------- */
@@ -291,7 +369,7 @@
 
     ctx.save();
     ctx.strokeStyle = C.white;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = lwOf(o, 1.5);
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (var i = 0; i < pts.length; i++) {
@@ -327,7 +405,7 @@
 
     ctx.save();
     ctx.strokeStyle = C.white;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = lwOf(o, 1);
     ctx.beginPath();
     ctx.moveTo(edge + 0.5, top);
     ctx.lineTo(edge + 0.5, bot);
@@ -343,15 +421,16 @@
     for (i = 0; i < ticks.minor.length; i++) {
       t = ticks.minor[i];
       if (t.y < top || t.y > bot) continue;
-      ctx.moveTo(edge - o.tickMinorLen, Math.round(t.y) + 0.5);
+      ctx.moveTo(edge - sz(o, o.tickMinorLen), Math.round(t.y) + 0.5);
       ctx.lineTo(edge, Math.round(t.y) + 0.5);
     }
     ctx.stroke();
 
     // 大刻度 + 数字
-    ctx.font = o.fontSizeTick + 'px ' + o.fontFamily;
+    ctx.font = fontOf(o, o.fontSizeTick);
     ctx.textAlign = 'right';
-    var labelSkip = this._labelSkipPx(p.majorDivFt, p.pxPerFt, o.fontSizeTick);
+    var fsTick = sz(o, o.fontSizeTick);
+    var labelSkip = this._labelSkipPx(p.majorDivFt, p.pxPerFt, fsTick);
     var lastLabY = -1e9;
     ctx.strokeStyle = C.white;
     ctx.fillStyle = C.white;
@@ -360,33 +439,33 @@
       if (t.y < top || t.y > bot) continue;
       var yr = Math.round(t.y) + 0.5;
       ctx.beginPath();
-      ctx.moveTo(edge - o.tickMajorLen, yr);
+      ctx.moveTo(edge - sz(o, o.tickMajorLen), yr);
       ctx.lineTo(edge, yr);
       ctx.stroke();
       // 读数框位置不画数字（会被框盖住）
       if (o.showAltReadout && Math.abs(t.y - p.cy) < labelSkip * 0.5) continue;
-      if (Math.abs(t.y - lastLabY) < o.fontSizeTick + 1) continue;
-      ctx.fillText(String(Math.round(t.ft)), edge - o.tickMajorLen - 2, t.y);
+      if (Math.abs(t.y - lastLabY) < fsTick + 1) continue;
+      ctx.fillText(String(Math.round(t.ft)), edge - sz(o, o.tickMajorLen) - sz(o, 2), t.y);
       lastLabY = t.y;
     }
 
     // 中心：当前高度读数框 + 指示三角
     if (o.showAltReadout) {
-      var bw = Math.min(o.readoutWidth, p.tapeW - 2), bh = 12;
-      var bx = edge - o.tickMajorLen - bw, by = p.cy - bh / 2;
+      var bw = Math.min(sz(o, o.readoutWidth), p.tapeW - sz(o, 2)), bh = sz(o, 12);
+      var bx = edge - sz(o, o.tickMajorLen) - bw, by = p.cy - bh / 2;
       ctx.fillStyle = '#000000';
       ctx.fillRect(bx, by, bw, bh);
       ctx.strokeStyle = C.white;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = lwOf(o, 1);
       ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       ctx.fillStyle = C.white;
       ctx.textAlign = 'right';
-      ctx.fillText(String(Math.round(p.alt0Ft)), edge - o.tickMajorLen - 3, p.cy);
+      ctx.fillText(String(Math.round(p.alt0Ft)), edge - sz(o, o.tickMajorLen) - sz(o, 3), p.cy);
       // 指向右的小三角
       ctx.beginPath();
-      ctx.moveTo(edge + 1, p.cy - 4);
-      ctx.lineTo(edge + 6, p.cy);
-      ctx.lineTo(edge + 1, p.cy + 4);
+      ctx.moveTo(edge + sz(o, 1), p.cy - sz(o, 4));
+      ctx.lineTo(edge + sz(o, 6), p.cy);
+      ctx.lineTo(edge + sz(o, 1), p.cy + sz(o, 4));
       ctx.closePath();
       ctx.fill();
     }
@@ -402,7 +481,7 @@
   VNavPanel.prototype._drawWaypoints = function (ctx, wps, plotX, plotW, y0, rh, xOf, maxDistNm) {
     var o = this.options, C = o.colors;
     ctx.save();
-    ctx.font = o.fontSizeLabel + 'px ' + o.fontFamily;
+    ctx.font = fontOf(o, o.fontSizeLabel);
     ctx.textAlign = 'left';
     var lastRight = -1e9;
     for (var i = 0; i < wps.length; i++) {
@@ -412,20 +491,20 @@
       if (x > plotX + plotW) continue;
       // 竖直短虚线
       ctx.save();
-      ctx.setLineDash([2, 3]);
+      ctx.setLineDash([sz(o, 2), sz(o, 3)]);
       ctx.strokeStyle = C.grey;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = lwOf(o, 1);
       ctx.beginPath();
-      ctx.moveTo(Math.round(x) + 0.5, y0 + 10);
-      ctx.lineTo(Math.round(x) + 0.5, y0 + rh - 2);
+      ctx.moveTo(Math.round(x) + 0.5, y0 + sz(o, 10));
+      ctx.lineTo(Math.round(x) + 0.5, y0 + rh - sz(o, 2));
       ctx.stroke();
       ctx.restore();
       if (!w.name) continue;
       var tw = ctx.measureText(w.name).width;
-      if (x < lastRight + 3) continue;               // 避免名称互相压盖
+      if (x < lastRight + sz(o, 3)) continue;        // 避免名称互相压盖
       ctx.fillStyle = C.white;
-      ctx.fillText(w.name, x + 1, y0 + 5);
-      lastRight = x + 1 + tw;
+      ctx.fillText(w.name, x + sz(o, 1), y0 + sz(o, 5));
+      lastRight = x + sz(o, 1) + tw;
     }
     ctx.restore();
   };

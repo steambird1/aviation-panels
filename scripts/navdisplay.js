@@ -1,6 +1,7 @@
 /* =============================================================================
  * navdisplay.js —— 飞机导航显示（ND, Navigation Display）绘制库
- * 绘制画布：253 x 253，字体 Courier New
+ * 绘制画布：默认 253 x 253（可用 options.width/height 改为任意尺寸，如 884 x 524），
+ *         字体 Courier New；所有字号与固定像素尺寸均按 options.uiScale 缩放。
  * -----------------------------------------------------------------------------
  * 坐标约定：
  *   - 导航在二维平面上进行，世界坐标为 东北天 平面：x = 东(NM)，y = 北(NM)。
@@ -40,6 +41,15 @@
   var DEFAULTS = {
     width: 253,
     height: 253,
+
+    // 分辨率无关：uiScale 会把所有字号与固定像素尺寸按该倍率放大，
+    // 使同一套代码在不同画布尺寸下保持一致的观感（253 时为 1；884x524 时约 1.8）
+    uiScale: 1,
+    // 地图裁剪：'circle' 只画在以飞机为圆心、半径 r 的圆内；'rect' 画满整个导航区。
+    // 'auto'：当导航区明显扁宽（宽高比 > mapClipMaxAspect）时改用矩形——
+    //         此时圆受高度限制、铺不满宽度，两侧会留下大片空白。
+    mapClip: 'auto',
+    mapClipMaxAspect: 2.0,
 
     fontFamily: '"Courier New", Courier, monospace',
     fontSizeArc: 11,        // 航向带数字
@@ -197,11 +207,15 @@
   function NavDisplay(canvas, options) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.options = merge(DEFAULTS, options || {});
-    if (this.options.width) canvas.width = this.options.width;
-    if (this.options.height) canvas.height = this.options.height;
-    this.width = canvas.width;
-    this.height = canvas.height;
+    var o = merge(DEFAULTS, options || {});
+    // 未显式给出 width/height 时沿用 canvas 自身的尺寸（同一份代码即可适配 884x524 等）
+    if (!(options && options.width != null) && canvas.width) o.width = canvas.width;
+    if (!(options && options.height != null) && canvas.height) o.height = canvas.height;
+    this.options = o;
+    if (o.width) canvas.width = o.width;
+    if (o.height) canvas.height = o.height;
+    this.width = o.width;
+    this.height = o.height;
     this.input = {};
     this.L = null;
     this._routePath = [];
@@ -262,6 +276,19 @@
     return (inp.track != null ? inp.track : (inp.heading != null ? inp.heading : 0));
   };
 
+  /* ---------------- 分辨率缩放辅助 ---------------- */
+
+  /** 固定像素尺寸 -> 实际像素（乘 uiScale） */
+  NavDisplay.prototype._s = function (v) { return v * this.options.uiScale; };
+  /** 字号 -> CSS font 字符串 */
+  NavDisplay.prototype._font = function (px) {
+    return (px * this.options.uiScale).toFixed(2) + 'px ' + this.options.fontFamily;
+  };
+  /** 线宽：随 uiScale 放大但夹在 [1, 3.5]，避免大画布上过粗 */
+  NavDisplay.prototype._lw = function (v) {
+    return Math.max(1, Math.min(3.5, v * this.options.uiScale));
+  };
+
   /* ---------------- 布局 ---------------- */
 
   NavDisplay.prototype._layout = function () {
@@ -286,22 +313,22 @@
 
     var cx = navX + navW / 2;
     // 预留区在下方时导航区变矮，缩小下边距以换取更大的弧半径
-    var bottomMargin = (side === 'bottom') ? o.bottomMarginBottom : o.bottomMargin;
+    var bottomMargin = (side === 'bottom') ? this._s(o.bottomMarginBottom) : this._s(o.bottomMargin);
     var acYMax = navH - bottomMargin;
 
     // 弧半径取两个约束的较小值：
     //   横向 —— 弧两端（±arcSpanDeg）的刻度与数字仍落在导航区内
     //   纵向 —— 弧顶不侵入顶部保留区
     var sinSpan = Math.max(0.2, Math.sin(rad(o.arcSpanDeg)));
-    var r = Math.min((navW / 2 - o.arcMargin) / sinSpan, acYMax - o.topReserve);
-    if (r < 28) r = 28;
+    var r = Math.min((navW / 2 - this._s(o.arcMargin)) / sinSpan, acYMax - this._s(o.topReserve));
+    if (r < this._s(28)) r = this._s(28);
 
     // 弧顶紧贴顶部保留区下沿，消除弧上方的空白；同时不让飞机被抬到画面中部
-    var acY = Math.max(o.topReserve + r, navH * o.minAcYRatio);
+    var acY = Math.max(this._s(o.topReserve) + r, navH * o.minAcYRatio);
     // 弧很小时（导航区窄）允许上移，但弧顶与保留区之间不留过大空档
-    acY = Math.min(acY, acYMax, o.topReserve + o.maxGapAboveArc + r);
+    acY = Math.min(acY, acYMax, this._s(o.topReserve) + this._s(o.maxGapAboveArc) + r);
 
-    var lineLen = Math.max(20, r - o.scaleTopGap);
+    var lineLen = Math.max(this._s(20), r - this._s(o.scaleTopGap));
     var rangeNm = (inp.rangeNm != null && inp.rangeNm > 0) ? inp.rangeNm : 20;
     var pxPerNm = lineLen / rangeNm;
 
@@ -313,7 +340,21 @@
       extraY: navH,
       extraSide: side
     };
+    this.L.clip = this._clipMode(this.L);
     return this.L;
+  };
+
+  /**
+   * 地图裁剪模式。
+   * 'auto'：导航区宽高比 > mapClipMaxAspect 时用矩形，否则用圆。
+   * 圆以飞机为圆心、半径 = 弧半径；导航区又扁又宽时圆受高度限制而铺不满宽度，
+   * 两侧会留下大片空白，此时改用矩形（真实宽屏 ND 的地图也是铺满整个屏幕的）。
+   */
+  NavDisplay.prototype._clipMode = function (L) {
+    var o = this.options;
+    if (o.mapClip === 'circle' || o.mapClip === 'rect') return o.mapClip;
+    var aspect = (L.navH > 0) ? (L.navW / L.navH) : 1;
+    return (aspect > o.mapClipMaxAspect) ? 'rect' : 'circle';
   };
 
   /* ---------------- 主绘制 ---------------- */
@@ -419,13 +460,16 @@
     var fault = !!inp.mapFault;
 
     ctx.save();
-    // 地图只画在导航区内（预留区在下方时不越界），并且只画在弧内（以飞机为圆心的圆）
+    // 地图只画在导航区内（预留区在下方时不越界）
     ctx.beginPath();
     ctx.rect(L.navX, 0, L.navW, L.navH);
     ctx.clip();
-    ctx.beginPath();
-    ctx.arc(L.cx, L.acY, L.r, 0, Math.PI * 2);
-    ctx.clip();
+    // 再按裁剪模式限制：'circle' 只画在弧内圆；'rect' 画满导航区
+    if (L.clip !== 'rect') {
+      ctx.beginPath();
+      ctx.arc(L.cx, L.acY, L.r, 0, Math.PI * 2);
+      ctx.clip();
+    }
 
     if (!(fault && this.options.mapFaultSuppressRadar)) this._drawRadar();
     if (!fault) {
@@ -485,7 +529,7 @@
       var seg = segs[i];
       var magenta = seg.leg < active;
       ctx.strokeStyle = magenta ? C.magenta : C.white;
-      ctx.lineWidth = magenta ? 2 : 1.4;
+      ctx.lineWidth = magenta ? this._lw(2) : this._lw(1.4);
       ctx.beginPath();
       var pts = seg.pts;
       for (var k = 0; k < pts.length; k++) {
@@ -538,10 +582,11 @@
   };
 
   NavDisplay.prototype._inMap = function (s) {
-    var L = this.L;
-    var dx = s.x - L.cx, dy = s.y - L.acY;
-    if (dx * dx + dy * dy > (L.r + 4) * (L.r + 4)) return false;
-    if (s.x < -6 || s.x > this.width + 6 || s.y < -6 || s.y > this.height + 6) return false;
+    var L = this.L, m = this._s(6);
+    if (s.x < -m || s.x > this.width + m || s.y < -m || s.y > (L.navH || this.height) + m) return false;
+    if (L.clip === 'rect') return true;
+    var dx = s.x - L.cx, dy = s.y - L.acY, rr = L.r + this._s(4);
+    if (dx * dx + dy * dy > rr * rr) return false;
     return true;
   };
 
@@ -555,11 +600,12 @@
     var ux = dx / dl, uy = dy / dl;
 
     ctx.save();
-    if (this.options.radialDashed) ctx.setLineDash([5, 4]);
+    if (this.options.radialDashed) ctx.setLineDash([this._s(5), this._s(4)]);
     ctx.strokeStyle = C.cyan;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._lw(1);
     ctx.beginPath();
-    ctx.moveTo(sp.x - ux * 14, sp.y - uy * 14);   // 反方向一小段
+    var back = this._s(14);
+    ctx.moveTo(sp.x - ux * back, sp.y - uy * back);   // 反方向一小段
     ctx.lineTo(s2.x, s2.y);
     ctx.stroke();
     ctx.restore();
@@ -582,8 +628,8 @@
   NavDisplay.prototype._symbolWaypoint = function (x, y, color) {
     var ctx = this.ctx;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    this._poly(x, y, 4, 4.8, -Math.PI / 2);
+    ctx.lineWidth = this._lw(1.5);
+    this._poly(x, y, 4, this._s(4.8), -Math.PI / 2);
     ctx.stroke();
   };
 
@@ -591,11 +637,11 @@
   NavDisplay.prototype._symbolNavaid = function (x, y, type) {
     var ctx = this.ctx, C = this.options.colors;
     ctx.strokeStyle = C.cyan;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = this._lw(1.4);
     if (type === 'NDB') {
-      this._poly(x, y, 3, 5.6, -Math.PI / 2);
+      this._poly(x, y, 3, this._s(5.6), -Math.PI / 2);
     } else {
-      this._poly(x, y, 6, 5.2, -Math.PI / 2);
+      this._poly(x, y, 6, this._s(5.2), -Math.PI / 2);
     }
     ctx.stroke();
   };
@@ -605,16 +651,16 @@
     var ctx = this.ctx;
     ctx.fillStyle = color || this.options.colors.white;
     ctx.beginPath();
-    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+    ctx.arc(x, y, this._s(2.2), 0, Math.PI * 2);
     ctx.fill();
   };
 
   NavDisplay.prototype._label = function (text, x, y, color) {
     var ctx = this.ctx, o = this.options;
     ctx.fillStyle = color || o.colors.white;
-    ctx.font = o.fontSizeLabel + 'px ' + o.fontFamily;
+    ctx.font = this._font(o.fontSizeLabel);
     ctx.textAlign = 'left';
-    ctx.fillText(text, x + 7, y + 1);
+    ctx.fillText(text, x + this._s(7), y + this._s(1));
   };
 
   /* ---------------- 航向弧 ---------------- */
@@ -626,7 +672,7 @@
 
     // 弧线
     ctx.strokeStyle = C.arc;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._lw(1);
     ctx.beginPath();
     ctx.arc(L.cx, L.acY, L.r, rad(-90 - span), rad(-90 + span));
     ctx.stroke();
@@ -634,21 +680,21 @@
     // 刻度：每 10° 一条，每 30° 一条长刻度 + 数字
     var h0 = Math.ceil((track - span) / 10) * 10;
     var h1 = Math.floor((track + span) / 10) * 10;
-    ctx.font = o.fontSizeArc + 'px ' + o.fontFamily;
+    ctx.font = this._font(o.fontSizeArc);
     for (var h = h0; h <= h1; h += 10) {
       var a = h - track;
       if (Math.abs(a) > span + 0.001) continue;
       var major = (Math.round(norm360(h)) % 30 === 0);
-      var len = major ? 9 : 5;
+      var len = major ? this._s(9) : this._s(5);
       var p1 = this._polar(a, L.r), p2 = this._polar(a, L.r - len);
       ctx.strokeStyle = C.arc;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = this._lw(1);
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
       ctx.stroke();
       if (major) {
-        var pt = this._polar(a, L.r - 19);
+        var pt = this._polar(a, L.r - this._s(19));
         ctx.fillStyle = C.white;
         ctx.textAlign = 'center';
         ctx.fillText(this._headingLabel(h), pt.x, pt.y);
@@ -660,9 +706,9 @@
       var y = L.acY - L.r;
       ctx.fillStyle = C.white;
       ctx.beginPath();
-      ctx.moveTo(L.cx, y + 7);
-      ctx.lineTo(L.cx - 5, y - 2);
-      ctx.lineTo(L.cx + 5, y - 2);
+      ctx.moveTo(L.cx, y + this._s(7));
+      ctx.lineTo(L.cx - this._s(5), y - this._s(2));
+      ctx.lineTo(L.cx + this._s(5), y - this._s(2));
       ctx.closePath();
       ctx.fill();
     }
@@ -686,26 +732,26 @@
     var fault = !!inp.headingFault;
     var value = this._getTrack();
 
-    var boxW = 46, boxH = 22, top = 8;
+    var boxW = this._s(46), boxH = this._s(22), top = this._s(8);
     var txt = fault ? 'HDG' : fmt3(value);
 
     // 带框的当前航向居中于最上方；TRK 字样紧贴在其左侧
     var bx = L.cx - boxW / 2;
     var cy = top + boxH / 2;
 
-    ctx.font = '12px ' + o.fontFamily;
+    ctx.font = this._font(12);
     ctx.textAlign = 'right';
     ctx.fillStyle = C.white;
-    ctx.fillText('TRK', bx - 6, cy);
+    ctx.fillText('TRK', bx - this._s(6), cy);
 
     // 带框的当前航向（故障时为黄色带框 HDG）
     ctx.strokeStyle = fault ? C.amber : C.white;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._lw(1);
     ctx.strokeRect(bx + 0.5, top + 0.5, boxW - 1, boxH - 1);
     ctx.fillStyle = fault ? C.amber : C.white;
     ctx.textAlign = 'center';
-    ctx.font = o.fontSizeBox + 'px ' + o.fontFamily;
-    ctx.fillText(txt, bx + boxW / 2, cy + 1);
+    ctx.font = this._font(o.fontSizeBox);
+    ctx.fillText(txt, bx + boxW / 2, cy + this._s(1));
   };
 
   /* ---------------- 左上角风 ---------------- */
@@ -716,22 +762,22 @@
     if (!w || w.show === false) return;
     var ctx = this.ctx, o = this.options, C = o.colors, L = this.L;
 
-    var ox = L.navX + 30, oy = 24;
+    var ox = L.navX + this._s(30), oy = this._s(24);
     var a = (w.dir != null ? w.dir : 0) - this._getTrack();
     if (!o.windArrowToSource) a += 180;
     var ux = Math.sin(rad(a)), uy = -Math.cos(rad(a));
-    var len = 17;
+    var len = this._s(17);
     var tx = ox + ux * len, ty = oy + uy * len;
 
     ctx.strokeStyle = C.white;
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = this._lw(1.6);
     ctx.beginPath();
     ctx.moveTo(ox, oy);
     ctx.lineTo(tx, ty);
     ctx.stroke();
 
     // 箭头
-    var hl = 6, hw = 3.6;
+    var hl = this._s(6), hw = this._s(3.6);
     ctx.fillStyle = C.white;
     ctx.beginPath();
     ctx.moveTo(tx, ty);
@@ -743,8 +789,9 @@
     // 风速
     ctx.fillStyle = C.white;
     ctx.textAlign = 'left';
-    ctx.font = '12px ' + o.fontFamily;
-    ctx.fillText(String(Math.round(w.speed != null ? w.speed : 0)), L.navX + 8, oy + 24);
+    ctx.font = this._font(12);
+    ctx.fillText(String(Math.round(w.speed != null ? w.speed : 0)),
+      L.navX + this._s(8), oy + this._s(24));
   };
 
   /* ---------------- 对称轴竖线 + 比例尺 ---------------- */
@@ -757,22 +804,23 @@
     var mid = y0 - L.lineLen / 2;         // 中间 = 比例尺一半
 
     var label = fmtNum(L.rangeNm / 2);
-    ctx.font = o.fontSizeSmall + 'px ' + o.fontFamily;
+    ctx.font = this._font(o.fontSizeSmall);
     var tw = ctx.measureText(label).width;
-    var gapH = 11;                        // 数字处断开的高度
+    var gapH = this._s(11);               // 数字处断开的高度
 
     ctx.strokeStyle = C.scale;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._lw(1);
     // 竖线：在数字处断开，不穿过数字
     this._vline(x, y0, mid + gapH / 2);
     this._vline(x, mid - gapH / 2, yTop);
 
     // 3 个刻度：两端横线，中间在数字左右各一小段
-    this._hline(x - 5, x + 5, y0);
-    this._hline(x - 5, x + 5, yTop);
-    var hw = tw / 2 + 2;
-    this._hline(x - hw - 4, x - hw, mid);
-    this._hline(x + hw, x + hw + 4, mid);
+    var t5 = this._s(5);
+    this._hline(x - t5, x + t5, y0);
+    this._hline(x - t5, x + t5, yTop);
+    var hw = tw / 2 + this._s(2), t4 = this._s(4);
+    this._hline(x - hw - t4, x - hw, mid);
+    this._hline(x + hw, x + hw + t4, mid);
 
     // 中间的数字 = 比例尺的一半
     ctx.fillStyle = C.white;
@@ -802,8 +850,9 @@
     var o = this.options, L = this.L;
     var navH = (L.navH != null ? L.navH : this.height);
     var k = Math.min(1, navH / this.height);          // 导航区变矮时等比缩小
-    var hh = Math.min(o.aircraftHeight * k, Math.max(8, navH - L.acY - 3));
-    var hw = o.aircraftHalfWidth * (hh / o.aircraftHeight);  // 顶角不变
+    var base = o.aircraftHeight * this.options.uiScale;
+    var hh = Math.min(base * k, Math.max(this._s(8), navH - L.acY - this._s(3)));
+    var hw = o.aircraftHalfWidth * this.options.uiScale * (hh / base);  // 顶角不变
     return { hw: hw, hh: hh };
   };
 
@@ -828,10 +877,11 @@
     if (!r || !r.mode || r.mode === 'off') return;
     var ctx = this.ctx, o = this.options, C = o.colors, L = this.L;
     // 贴着导航区（而非整个画布）的左下角；最底一行与飞机符号底边对齐
-    var x = L.navX + 6, lh = 13;
+    var x = L.navX + this._s(6), lh = this._s(13);
     var navBottom = (L.navH != null ? L.navH : this.height);
     // +2 补偿 Courier New 的 middle 基线与实际字形中心的偏差，使文字视觉中心正对飞机底边
-    var base = Math.min(navBottom - 6, L.acY + this._aircraftSize().hh + o.radarLabelYOffset);
+    var base = Math.min(navBottom - this._s(6),
+      L.acY + this._aircraftSize().hh + this._s(o.radarLabelYOffset));
 
     var items = [];
     if (r.mode === 'terr') {
@@ -846,14 +896,14 @@
     }
 
     ctx.textAlign = 'left';
-    ctx.font = '12px ' + o.fontFamily;
+    ctx.font = this._font(12);
     for (var k = 0; k < items.length; k++) {
       var yy = base - (items.length - 1 - k) * lh;
-      // 弧变大后左下角可能落到地图圆内，加黑色衬底保证字符可读
+      // 弧变大后左下角可能落到地图内，加黑色衬底保证字符可读
       if (o.radarLabelBacking) {
         var tw = ctx.measureText(items[k].text).width;
         ctx.fillStyle = 'rgba(0,0,0,0.85)';
-        ctx.fillRect(x - 2, yy - 7, tw + 4, 14);
+        ctx.fillRect(x - this._s(2), yy - this._s(7), tw + this._s(4), this._s(14));
       }
       ctx.fillStyle = items[k].color;
       ctx.fillText(items[k].text, x, yy);
@@ -865,22 +915,22 @@
 
   NavDisplay.prototype._drawFlag = function (x, y, text, color) {
     var ctx = this.ctx, o = this.options;
-    ctx.font = o.fontSizeFlag + 'px ' + o.fontFamily;
+    ctx.font = this._font(o.fontSizeFlag);
     var tw = ctx.measureText(text).width;
-    var bw = tw + 14, bh = 18;
+    var bw = tw + this._s(14), bh = this._s(18);
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._lw(1);
     ctx.strokeRect(x - bw / 2 + 0.5, y - bh / 2 + 0.5, bw - 1, bh - 1);
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
-    ctx.fillText(text, x, y + 1);
+    ctx.fillText(text, x, y + this._s(1));
   };
 
   /* ------------------------------------------------------------------------ */
   return {
     /* 库版本：demo_nd.js 会用它判断浏览器加载的是否为最新脚本
        （file:// 下 ?v=xxx 的缓存失效不可靠，旧脚本可能仍被复用） */
-    VERSION: '1.6.0',
+    VERSION: '2.0.0',
     NavDisplay: NavDisplay,
     RADAR_LEVEL: RADAR_LEVEL,
     RADAR_RGBA: RADAR_RGBA,

@@ -212,15 +212,24 @@
       </div>
       <div class="checks">
         <label><input id="chkTarget" type="checkbox" checked> 目标高度/升降率（紫色虚线）</label>
-        <label><input id="chkMda" type="checkbox" checked> 最低下降高度（青色虚线）</label>
+        <label><input id="chkMda" type="checkbox" checked> 最低下降高度（黄色虚线）</label>
+        <label><input id="chkEnvelope" type="checkbox" checked> 包络（青色曲线，另一份地形数据）</label>
         <label><input id="chkVnavWpt" type="checkbox" checked> 把航路点显示在上面</label>
+      </div>
+      <div class="row">
+        <label>包络余度</label>
+        <input id="rngEnvClear" type="range" min="0" max="2000" step="100" value="500">
+        <span class="val" id="rngEnvClearVal">500 ft</span>
       </div>
       <p class="note">
         高度条随高度滚动，当前高度始终位于高度条的一半处；白色线为高度趋势
         （含加速度，故为二次曲线），长度约为剩余宽度的 1/5。<br>
-        地形按接近率着色：<span class="sw" style="background:#30ff30"></span>绿（余度充足）
+        地形按接近率着色并向下填充：<span class="sw" style="background:#30ff30"></span>绿（余度充足）
         <span class="sw" style="background:#ffd400"></span>黄（余度不足 1000 ft）
         <span class="sw" style="background:#ff3c30"></span>红（地形接近/高于预测轨迹）。<br>
+        <span class="sw" style="background:#22e0e0"></span>青色曲线为<b>包络</b>——另一份“地形数据”，
+        接口与地形一致（<code>elevation</code> 栅格或 <code>sample()</code>），表示该点之上的安全下限；
+        只画曲线、不填充、不参与接近率计算，且恒 <b>&ge;</b> 真实地形（内部逐点取 <code>max</code> 保证）。<br>
         目标高度或最低下降高度为 <code>null</code> 时对应信息不显示（用上面的开关模拟）。
       </p>
     </fieldset>
@@ -228,7 +237,7 @@
     <fieldset>
       <legend>显示开关</legend>
       <div class="checks">
-        <label><input id="chkExtra" type="checkbox"> 其它导航信息区域（下方预留 110px，绘制 VNAV 剖面）</label>
+        <label><input id="chkExtra" type="checkbox" checked> 其它导航信息区域（下方预留 110px，绘制 VNAV 剖面）</label>
         <label><input id="chkAnimate" type="checkbox"> 沿航路飞行演示</label>
         <label><input id="chkZoom" type="checkbox"> 2× 放大显示（不改变 canvas 尺寸）</label>
       </div>
@@ -254,9 +263,9 @@
   </div>
 </div>
 
-<script src="../scripts/navdisplay.js?v=20261027d"></script>
-<script src="../scripts/navprofile.js?v=20261027d"></script>
-<script src="../scripts/vnav.js?v=20261027d"></script>
-<script src="../scripts/demo_nd.js?v=20261027d"></script>
+<script src="../scripts/navdisplay.js?v=20261029a"></script>
+<script src="../scripts/navprofile.js?v=20261029a"></script>
+<script src="../scripts/vnav.js?v=20261029a"></script>
+<script src="../scripts/demo_nd.js?v=20261029a"></script>
 </body>
 </html>
